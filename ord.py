@@ -161,7 +161,7 @@ def parse_reaction(bar, role2idx, one_reaction, mole_offset, edge_offset, atom_o
             react_edge_index.append(edge_index), react_edge_feat.append(edge_feat), react_atom_feat.append(atom_feat)
             
             E, V = edge_index.shape[0], atom_feat.shape[0]
-            bar.set_postfix(OrderedDict(role=role, E=E, V=V))
+            bar.set_postfix(OrderedDict(role=f'{role:10s}', E=f'{E:3d}', V=f'{V:3d}'))
             edge_offset += E
             react_edge_offset.append(edge_offset)
             atom_offset += V
