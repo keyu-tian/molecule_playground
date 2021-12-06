@@ -135,9 +135,9 @@ def main():
             'atom_offset': torch.tensor(all_atom_offset, dtype=torch.int32),
             'atom_features': torch.cat(all_atom_feat, dim=0),
         }
-        tensors['num_moles_per_reaction'] = tensors['all_mole_offset'][1:] - tensors['all_mole_offset'][:-1]
-        tensors['num_edges_per_mole'] = tensors['all_edge_offset'][1:] - tensors['all_edge_offset'][:-1]
-        tensors['num_atoms_per_mole'] = tensors['all_atom_offset'][1:] - tensors['all_atom_offset'][:-1]
+        tensors['num_moles_per_reaction'] = tensors['mole_offset'][1:] - tensors['mole_offset'][:-1]
+        tensors['num_edges_per_mole'] = tensors['edge_offset'][1:] - tensors['edge_offset'][:-1]
+        tensors['num_atoms_per_mole'] = tensors['atom_offset'][1:] - tensors['atom_offset'][:-1]
         torch.save(tensors, torch_file)
 
 
