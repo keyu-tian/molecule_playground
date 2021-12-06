@@ -62,7 +62,9 @@ def main():
     torch_root = pathlib.Path(os.path.expanduser('~')) / 'datasets' / 'ord-data-torch'
     os.makedirs(torch_root, exist_ok=True)
     
-    for json_name in sorted(os.listdir(jsons_root)):
+    json_names = sorted(os.listdir(jsons_root))
+    for json_i, json_name in enumerate(json_names):
+        ds_desc = f'{json_name} ({json_i+1:2d}/{len(json_names)})'
         torch_file = torch_root / json_name.replace('.json', '.pth')
         if os.path.exists(torch_file):
             print(f'{time_str()} [{json_name}]: already preprocessed !')
@@ -97,7 +99,7 @@ def main():
         mole_offset, all_mole_offset = 0, [0]
         edge_offset, all_edge_offset = 0, [0]
         atom_offset, all_atom_offset = 0, [0]
-        bar = tqdm.tqdm(dataset, desc=f'[{json_name}]', mininterval=2., dynamic_ncols=True)
+        bar = tqdm.tqdm(dataset, desc=f'[{ds_desc}]', mininterval=1., dynamic_ncols=True)
         stt = time.time()
         for i, one_reaction in enumerate(bar):
             try:
