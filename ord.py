@@ -97,7 +97,7 @@ def main():
         mole_offset, all_mole_offset = 0, [0]
         edge_offset, all_edge_offset = 0, [0]
         atom_offset, all_atom_offset = 0, [0]
-        bar = tqdm.tqdm(dataset, dynamic_ncols=True)
+        bar = tqdm.tqdm(dataset, desc=f'[{json_name}]', mininterval=1, dynamic_ncols=True)
         stt = time.time()
         for i, one_reaction in enumerate(bar):
             try:
@@ -155,7 +155,6 @@ def parse_reaction(bar, role2idx, one_reaction, mole_offset, edge_offset, atom_o
         else:
             role = None
         if role is not None:
-            bar.set_postfix(OrderedDict(role=role))
             react_mole_roles.append(role2idx[role])
             # (E, 2)     (E, 3)     (V, 9)
             edge_index, edge_feat, atom_feat = smiles2graph.smiles2graph(one_reaction[k.replace('.type', '.value')])
