@@ -97,7 +97,7 @@ def main():
         mole_offset, all_mole_offset = 0, [0]
         edge_offset, all_edge_offset = 0, [0]
         atom_offset, all_atom_offset = 0, [0]
-        bar = tqdm.tqdm(dataset, desc=f'[{json_name}]', mininterval=1, dynamic_ncols=True)
+        bar = tqdm.tqdm(dataset, desc=f'[{json_name}]', mininterval=2., dynamic_ncols=True)
         stt = time.time()
         for i, one_reaction in enumerate(bar):
             try:
