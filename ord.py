@@ -127,12 +127,12 @@ def main():
         tensors = {
             'json_name': json_name,
             'bad_reactions': torch.tensor(bad_reactions, dtype=torch.int32),
-            'all_mole_offset': torch.tensor(all_mole_offset, dtype=torch.int32),
+            'mole_offset': torch.tensor(all_mole_offset, dtype=torch.int32),
             'mole_roles': torch.tensor(all_mole_roles, dtype=torch.int32),
-            'all_edge_offset': torch.tensor(all_edge_offset, dtype=torch.int32),
+            'edge_offset': torch.tensor(all_edge_offset, dtype=torch.int32),
             'edge_indices': torch.cat(all_edge_index, dim=0),
             'edge_features': torch.cat(all_edge_feat, dim=0),
-            'all_atom_offset': torch.tensor(all_atom_offset, dtype=torch.int32),
+            'atom_offset': torch.tensor(all_atom_offset, dtype=torch.int32),
             'atom_features': torch.cat(all_atom_feat, dim=0),
         }
         tensors['num_moles_per_reaction'] = tensors['all_mole_offset'][1:] - tensors['all_mole_offset'][:-1]
