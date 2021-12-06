@@ -124,7 +124,7 @@ def main():
         if len(bad_reactions):
             print(f'   ***** [{json_name}]: bad_reactions={bad_reactions}')
         
-        if len(all_mole_offset) == 0:
+        if len(all_edge_index) == 0:
             print(f'   ***** [{json_name}]: bad_dataset !')
             torch.save({'json_name': json_name}, torch_file + '.bug')
             continue
