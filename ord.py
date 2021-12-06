@@ -120,14 +120,14 @@ def main():
         bar.close()
         num_reactions = len(dataset)
         avg_mole_cnt, avg_edge_cnt, avg_atom_cnt = mole_offset / num_reactions, edge_offset / num_reactions, atom_offset / num_reactions
+        if len(all_edge_index) == 0:
+            print(f'{time_str()} [{json_name}]: bad_dataset !')
+            torch.save({'json_name': json_name}, str(torch_file) + '.bug')
+            continue
+
         print(f'{time_str()} [{json_name}]: #bad={len(bad_reactions)}, #Mol={avg_mole_cnt:.2f}, #E={avg_edge_cnt:.2f}, #A={avg_atom_cnt:.2f}, cost={time.time()-stt:.2f}s')
         if len(bad_reactions):
             print(f'   ***** [{json_name}]: bad_reactions={bad_reactions}')
-        
-        if len(all_edge_index) == 0:
-            print(f'   ***** [{json_name}]: bad_dataset !')
-            torch.save({'json_name': json_name}, str(torch_file) + '.bug')
-            continue
         
         tensors = {
             'json_name': json_name,
