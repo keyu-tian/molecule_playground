@@ -145,11 +145,11 @@ def tensorfy_json_data():
         avg_mole_cnt, avg_edge_cnt, avg_atom_cnt = mole_offset / num_reactions, edge_offset / num_reactions, atom_offset / num_reactions
         meta['json_name'].append(ds_desc)
         meta['#R'].append(num_reactions)
-        meta['#M_per_R'].append(avg_mole_cnt)
-        meta['#E_per_R'].append(avg_edge_cnt)
-        meta['#A_per_R'].append(avg_atom_cnt)
+        meta['#M_per_R'].append(round(avg_mole_cnt, 2))
+        meta['#E_per_R'].append(round(avg_edge_cnt, 2))
+        meta['#A_per_R'].append(round(avg_atom_cnt, 2))
         time_cost = time.time()-stt
-        meta['cost'].append(time_cost)
+        meta['cost'].append(round(time_cost, 2))
         meta['#bad_reac'].append(len(bad_reaction_ids))
         meta['buggy'].append(buggy_dataset)
         
