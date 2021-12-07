@@ -2,10 +2,13 @@ import datetime
 import json
 import os
 import pathlib
+import random
 import time
 import zipfile
 from collections import defaultdict
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Set
+from multiprocessing import Pool
+from multiprocessing import cpu_count
 
 import pandas
 import torch
@@ -75,7 +78,8 @@ def download_and_jsonfy_data():
         print(f'{time_str()} {ds_desc} dumped @ {output_file}, load={load_t-start_t:.2f} cast={cast_t-start_t:.2f}, dump={dump_t-cast_t:.2f}')
 
 
-def tensorfy_json_data():
+def tensorfy_json_data(args):
+    rank, json_names = args
     jsons_root = pathlib.Path(os.path.expanduser('~')) / 'datasets' / 'ord-data-json'
     torch_root = pathlib.Path(os.path.expanduser('~')) / 'datasets' / 'ord-data-torch'
     os.makedirs(torch_root, exist_ok=True)
@@ -88,10 +92,7 @@ def tensorfy_json_data():
     }
     
     meta = defaultdict(list)
-    json_names = sorted(os.listdir(jsons_root))
     for json_i, json_name in enumerate(json_names):
-        ds_desc = f'{json_name} ({json_i+1:2d}/{len(json_names)})'
-        
         torch_file = torch_root / json_name.replace('.json', '.pth')
         if os.path.exists(torch_file):  # skip this dataset
             print(f'{time_str()} [{json_name}]: already preprocessed !')
@@ -107,7 +108,7 @@ def tensorfy_json_data():
         edge_offset, all_edge_offset = 0, [0]
         atom_offset, all_atom_offset = 0, [0]
         
-        bar = tqdm.tqdm(reactions, desc=f'[{ds_desc}]', mininterval=1., dynamic_ncols=True)
+        bar = tqdm.tqdm(reactions, desc=f'[{json_name} ({json_i+1:2d}/{len(json_names)})]', mininterval=1., dynamic_ncols=True)
         stt = time.time()
         for i, one_reaction in enumerate(bar):
             one_reaction: Dict[str, str]
@@ -143,7 +144,7 @@ def tensorfy_json_data():
             num_reactions = -1
         # per-reaction stats
         avg_mole_cnt, avg_edge_cnt, avg_atom_cnt = mole_offset / num_reactions, edge_offset / num_reactions, atom_offset / num_reactions
-        meta['json_name'].append(ds_desc)
+        meta['json_name'].append(json_name)
         meta['#R'].append(num_reactions)
         meta['#M_per_R'].append(round(avg_mole_cnt, 2))
         meta['#E_per_R'].append(round(avg_edge_cnt, 2))
@@ -171,8 +172,7 @@ def tensorfy_json_data():
         
         check_and_save(torch_file, json_name, bad_reaction_idx, bad_reaction_ids, reaction_ids, all_mole_offset, all_mole_roles, all_edge_offset, all_edge_index, all_edge_feat, all_atom_offset, all_atom_feat)
     
-    meta = pandas.DataFrame(meta)
-    meta.to_csv('meta-' + datetime.datetime.now().strftime('%m%d_%H-%M-%S') + '.csv')
+    return meta
 
 
 def check_and_save(torch_file, json_name, bad_reaction_idx, bad_reaction_ids, reaction_ids, all_mole_offset, all_mole_roles, all_edge_offset, all_edge_index, all_edge_feat, all_atom_offset, all_atom_feat):
@@ -235,8 +235,8 @@ def reaction2graphs(bar, role2idx, role_smiles_pairs, mole_offset, edge_offset, 
     return mole_offset, edge_offset, atom_offset, react_mole_roles, react_edge_index, react_edge_feat, react_atom_feat, react_edge_offset, react_atom_offset
 
 
-def parse_one_reaction(one_reaction):
-    role_smiles_pairs: List[Tuple[str, List[str]]] = []
+def parse_one_reaction(one_reaction: Dict[str, str]):
+    role_smiles_pairs: Set[Tuple[str, str]] = set()
     for k, v in one_reaction.items():
         if k.startswith('inputs') and k.endswith('.type') and v.upper() == 'SMILES':
             role = one_reaction.get(k.split('identifiers[')[0] + 'reaction_role', 'REACTANT').upper()
@@ -246,27 +246,50 @@ def parse_one_reaction(one_reaction):
             role = None
         if role is not None:
             for smiles in one_reaction[k.replace('.type', '.value')].split('.'):
-                role_smiles_pairs.append((role, smiles))
+                role_smiles_pairs.add((role, smiles))
     
     if len(role_smiles_pairs) == 0:
         for k, v in one_reaction.items():
             if v.upper() == 'REACTION_SMILES':
                 left, mid, right = one_reaction[k.replace('.type', '.value')].split('>')
                 for reactant in left.split('.'):
-                    role_smiles_pairs.append(('REACTANT', reactant))
+                    role_smiles_pairs.add(('REACTANT', reactant))
                 for solvent_or_catalyst in mid.split('.'):
-                    if any(x in solvent_or_catalyst for x in {'Pd', 'Pt', 'Fe', 'Au', 'Mn', 'Ni', 'Cu', 'Ag'}):
-                        role_smiles_pairs.append(('CATALYST', solvent_or_catalyst))
+                    if any(x in solvent_or_catalyst for x in {'Cr', 'Mn', 'Fe', 'Co', 'Ni', 'Cu', 'Ag', 'Au', 'Pt', 'Pd'}):
+                        role_smiles_pairs.add(('CATALYST', solvent_or_catalyst))
                     else:
-                        role_smiles_pairs.append(('SOLVENT', solvent_or_catalyst))
+                        role_smiles_pairs.add(('SOLVENT', solvent_or_catalyst))
                 for outcome in right.split('.'):
-                    role_smiles_pairs.append(('OUTCOME', outcome))
+                    role_smiles_pairs.add(('OUTCOME', outcome))
                 break
         assert len(role_smiles_pairs) != 0
     
     return role_smiles_pairs
 
 
-if __name__ == '__main__':
+def main():
     # download_and_jsonfy_data()
-    tensorfy_json_data()
+    
+    jsons_root = pathlib.Path(os.path.expanduser('~')) / 'datasets' / 'ord-data-json'
+    global_json_names = os.listdir(jsons_root)
+    random.shuffle(global_json_names)
+
+    world_size = cpu_count()
+    json_names = {rk: [] for rk in range(world_size)}
+    for i, json_name in enumerate(global_json_names):
+        json_names[i % world_size].append(json_name)
+        
+    with Pool(world_size) as pool:
+        metas: List[Dict[str, List]] = list(pool.imap(tensorfy_json_data, [(rk, json_names[rk]) for rk in range(world_size)], chunksize=1))
+    meta = {k: [] for k in metas[0].keys()}
+    for m in metas:
+        for k, v in m.items():
+            meta[k].extend(v)
+    
+    meta = pandas.DataFrame(meta)
+    meta = meta.sort_values(by=['json_name'])
+    meta.to_csv('meta-' + datetime.datetime.now().strftime('%m%d_%H-%M-%S') + '.csv')
+
+
+if __name__ == '__main__':
+    main()
