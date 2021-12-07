@@ -273,10 +273,6 @@ def main():
     random.shuffle(global_json_names)
 
     world_size = cpu_count()
-    json_names = {rk: [] for rk in range(world_size)}
-    for i, json_name in enumerate(global_json_names):
-        json_names[i % world_size].append(json_name)
-        
     with Pool(world_size) as pool:
         metas: List[Dict[str, List]] = list(pool.imap(tensorfy_json_data, global_json_names, chunksize=1))
     
