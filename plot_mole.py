@@ -1,3 +1,4 @@
+import sys
 from rdkit.Chem import Draw
 from rdkit import Chem
 
@@ -7,9 +8,10 @@ smiles = [
     'COC(=O)C1=CC2=CC=CN2C=N1',
     'C1=C2C=C(N=CN2C(=C1)Cl)C(=O)O',
 ]
+smiles = sys.argv[1:]
 moles = list(map(Chem.MolFromSmiles, smiles))
 
-img = Draw.MolsToGridImage(moles, molsPerRow=4, subImgSize=(200, 200), legends=['' for s in smiles])
+img = Draw.MolsToGridImage(moles, molsPerRow=3, subImgSize=(400, 400), legends=['' for s in smiles])
 import matplotlib.pyplot as plt
 plt.imshow(img)
 plt.show()

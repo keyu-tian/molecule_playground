@@ -4,8 +4,10 @@ import os
 import pathlib
 import time
 import zipfile
+from collections import defaultdict
 from typing import List, Dict, Tuple
 
+import pandas
 import torch
 import tqdm
 import wget
@@ -38,7 +40,7 @@ def download_and_jsonfy_data():
         fz.close()
         os.rename(os.path.join(datasets_dir, zip_dirname), os.path.join(datasets_dir, 'ord-data-zip'))
         assert os.path.exists(dataset_root)
-        
+    
     all_gz_paths = []
     for dir_name in sorted(os.listdir(dataset_root)):
         data_root = dataset_root / dir_name
@@ -77,14 +79,15 @@ def tensorfy_json_data():
     jsons_root = pathlib.Path(os.path.expanduser('~')) / 'datasets' / 'ord-data-json'
     torch_root = pathlib.Path(os.path.expanduser('~')) / 'datasets' / 'ord-data-torch'
     os.makedirs(torch_root, exist_ok=True)
-
+    
     role2idx = {
         'REACTANT': 0, 'REATANT': 0, 'REAGENT': 0,
         'SOLVENT': 1,
-        'CATALYST': 2,
+        'CATALYST': 2, 'INTERNAL_STANDARD': 2,
         'OUTCOME': 3, 'PRODUCT': 3,
     }
     
+    meta = defaultdict(list)
     json_names = sorted(os.listdir(jsons_root))
     for json_i, json_name in enumerate(json_names):
         ds_desc = f'{json_name} ({json_i+1:2d}/{len(json_names)})'
@@ -93,11 +96,11 @@ def tensorfy_json_data():
         if os.path.exists(torch_file):  # skip this dataset
             print(f'{time_str()} [{json_name}]: already preprocessed !')
             continue
-
+        
         with open(str(jsons_root / json_name), 'r') as fin:
             reactions: List[Dict[str, str]] = json.load(fin)
-        
-        bad_reaction_ids, reaction_ids = [], []
+
+        bad_reaction_idx, bad_reaction_ids, reaction_ids = [], [], []
         all_mole_roles = []
         all_edge_index, all_edge_feat, all_atom_feat = [], [], []
         mole_offset, all_mole_offset = 0, [0]
@@ -116,6 +119,7 @@ def tensorfy_json_data():
                 rets = reaction2graphs(bar, role2idx, role_smiles_pairs, mole_offset, edge_offset, atom_offset)
             except:
                 # no need to ROLLBACK xxx_offset, all_xxx, etc. (NOT UPDATED)
+                bad_reaction_idx.append(i)
                 bad_reaction_ids.append(rid_as_32_ints)
             else:
                 # UPDATE xxx_offset, all_xxx, etc.
@@ -133,17 +137,31 @@ def tensorfy_json_data():
                 all_atom_offset.extend(react_atom_offset)
         bar.close()
         
-        num_reactions = len(reactions)
+        num_reactions = len(reaction_ids)
+        buggy_dataset = num_reactions == 0
+        if buggy_dataset:
+            num_reactions = -1
         # per-reaction stats
         avg_mole_cnt, avg_edge_cnt, avg_atom_cnt = mole_offset / num_reactions, edge_offset / num_reactions, atom_offset / num_reactions
-        if len(all_edge_index) == 0:    # buggy dataset!
+        meta['json_name'].append(ds_desc)
+        meta['#R'].append(num_reactions)
+        meta['#M_per_R'].append(avg_mole_cnt)
+        meta['#E_per_R'].append(avg_edge_cnt)
+        meta['#A_per_R'].append(avg_atom_cnt)
+        time_cost = time.time()-stt
+        meta['cost'].append(time_cost)
+        meta['#bad_reac'].append(len(bad_reaction_ids))
+        meta['buggy'].append(buggy_dataset)
+        
+        if buggy_dataset:    # buggy dataset!
             print(f'{time_str()} [{json_name}]: bad_dataset !')
             torch.save({'json_name': json_name}, str(torch_file) + '.bug')
             continue
-
+        
         # show per-reaction stats
-        print(f'{time_str()} [{json_name}]: #bad={len(bad_reaction_ids)}, #Mol={avg_mole_cnt:.2f}, #E={avg_edge_cnt:.2f}, #A={avg_atom_cnt:.2f}, cost={time.time()-stt:.2f}s')
+        print(f'{time_str()} [{json_name}]: #bad={len(bad_reaction_ids)}, #Mol={avg_mole_cnt:.2f}, #E={avg_edge_cnt:.2f}, #A={avg_atom_cnt:.2f}, cost={time_cost:.2f}s')
         if len(bad_reaction_ids):
+            print(f'   ***** [{json_name}]: bad_reaction_idx={bad_reaction_idx}')
             rid_as_strs = []
             for rid_as_32_ints in bad_reaction_ids:
                 rid_as_32_chars = [f'{i:x}' for i in rid_as_32_ints]
@@ -151,12 +169,16 @@ def tensorfy_json_data():
                 rid_as_strs.append(rid_as_a_str)
             print(f'   ***** [{json_name}]: bad_reaction_ids={rid_as_strs}')
         
-        check_and_save(torch_file, json_name, bad_reaction_ids, reaction_ids, all_mole_offset, all_mole_roles, all_edge_offset, all_edge_index, all_edge_feat, all_atom_offset, all_atom_feat)
+        check_and_save(torch_file, json_name, bad_reaction_idx, bad_reaction_ids, reaction_ids, all_mole_offset, all_mole_roles, all_edge_offset, all_edge_index, all_edge_feat, all_atom_offset, all_atom_feat)
+    
+    meta = pandas.DataFrame(meta)
+    meta.to_csv('meta-' + datetime.datetime.now().strftime('%m%d_%H-%M-%S') + '.csv')
 
 
-def check_and_save(torch_file, json_name, bad_reaction_ids, reaction_ids, all_mole_offset, all_mole_roles, all_edge_offset, all_edge_index, all_edge_feat, all_atom_offset, all_atom_feat):
+def check_and_save(torch_file, json_name, bad_reaction_idx, bad_reaction_ids, reaction_ids, all_mole_offset, all_mole_roles, all_edge_offset, all_edge_index, all_edge_feat, all_atom_offset, all_atom_feat):
     tensors = {
         'json_name': json_name,
+        'bad_reaction_idx': torch.tensor(bad_reaction_idx, dtype=torch.int32),
         'bad_reaction_ids': torch.tensor(bad_reaction_ids, dtype=torch.uint8),
         'reaction_ids': torch.tensor(reaction_ids, dtype=torch.uint8),
         'mole_offset': torch.tensor(all_mole_offset, dtype=torch.int32),
@@ -209,7 +231,7 @@ def reaction2graphs(bar, role2idx, role_smiles_pairs, mole_offset, edge_offset, 
         react_edge_offset.append(edge_offset)
         atom_offset += V
         react_atom_offset.append(atom_offset)
-                
+    
     return mole_offset, edge_offset, atom_offset, react_mole_roles, react_edge_index, react_edge_feat, react_atom_feat, react_edge_offset, react_atom_offset
 
 
