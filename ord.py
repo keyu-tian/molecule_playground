@@ -148,8 +148,8 @@ def main():
         tensors['num_edges_per_mole'] = tensors['edge_offset'][1:] - tensors['edge_offset'][:-1]
         tensors['num_atoms_per_mole'] = tensors['atom_offset'][1:] - tensors['atom_offset'][:-1]
 
-        max_rid = tensors['reaction_ids'].size(0)
-        assert max_rid == tensors['mole_offset'].shape[0]
+        max_rid = tensors['mole_offset'].size(0)
+        assert max_rid == tensors['reaction_ids'].size(0) + 1
         
         max_mid = tensors['atom_offset'].size(0)
         assert max_mid == tensors['mole_offset'][-1] + 1
