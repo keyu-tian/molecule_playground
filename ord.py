@@ -112,8 +112,7 @@ def tensorfy_json_data():
             rid_as_a_str = one_reaction['reaction_id'].replace('ord-', '')
             rid_as_32_ints = [int(ch, base=16) for ch in rid_as_a_str]
             try:
-                # GET (but not UPDATE) new xxx_offset, all_xxx, etc.
-                rets = reaction2graphs(bar, role2idx, one_reaction, mole_offset, edge_offset, atom_offset)
+                role_smiles_pairs = parse_one_reaction(one_reaction)
             except:
                 # no need to ROLLBACK xxx_offset, all_xxx, etc. (NOT UPDATED)
                 bad_reaction_ids.append(rid_as_32_ints)
@@ -125,7 +124,7 @@ def tensorfy_json_data():
                     react_mole_roles,
                     react_edge_index, react_edge_feat, react_atom_feat,
                     react_edge_offset, react_atom_offset,
-                ) = rets
+                ) = reaction2graphs(bar, role2idx, role_smiles_pairs, mole_offset, edge_offset, atom_offset)
                 all_mole_roles.extend(react_mole_roles)
                 all_edge_index.extend(react_edge_index), all_edge_feat.extend(react_edge_feat), all_atom_feat.extend(react_atom_feat)
                 all_mole_offset.append(mole_offset)
@@ -191,36 +190,7 @@ def check_and_save(torch_file, json_name, bad_reaction_ids, reaction_ids, all_mo
     torch.save(tensors, torch_file)
 
 
-def reaction2graphs(bar, role2idx, one_reaction, mole_offset, edge_offset, atom_offset):
-    role_smiles_pairs: List[Tuple[str, List[str]]] = []
-    for k, v in one_reaction.items():
-        if k.startswith('inputs') and k.endswith('.type') and v.upper() == 'SMILES':
-            role = one_reaction.get(k.split('identifiers[')[0] + 'reaction_role', 'REACTANT').upper()
-        elif k.startswith('outcomes') and k.endswith('.type') and v.upper() == 'SMILES':
-            role = 'OUTCOME'
-        else:
-            role = None
-        if role is not None:
-            for smiles in one_reaction[k.replace('.type', '.value')].split('.'):
-                role_smiles_pairs.append((role, smiles))
-
-    if len(role_smiles_pairs) == 0:
-        for k, v in one_reaction.items():
-            if v.upper() == 'REACTION_SMILES':
-                left, mid, right = one_reaction[k.replace('.type', '.value')].split('>')
-                for reactant in left.split('.'):
-                    role_smiles_pairs.append(('REACTANT', reactant))
-                for solvent_or_catalyst in mid.split('.'):
-                    if any(x in solvent_or_catalyst for x in {'Pd', 'Pt', 'Fe', 'Au', 'Mn', 'Ni', 'Cu', 'Ag'}):
-                        role_smiles_pairs.append(('CATALYST', solvent_or_catalyst))
-                    else:
-                        role_smiles_pairs.append(('SOLVENT', solvent_or_catalyst))
-                for outcome in right.split('.'):
-                    role_smiles_pairs.append(('OUTCOME', outcome))
-                    
-    if len(role_smiles_pairs) == 0:
-        raise AttributeError('bad reaction')
-
+def reaction2graphs(bar, role2idx, role_smiles_pairs, mole_offset, edge_offset, atom_offset):
     react_mole_roles = []
     react_edge_index, react_edge_feat, react_atom_feat = [], [], []
     react_edge_offset, react_atom_offset = [], []
@@ -240,6 +210,38 @@ def reaction2graphs(bar, role2idx, one_reaction, mole_offset, edge_offset, atom_
         react_atom_offset.append(atom_offset)
                 
     return mole_offset, edge_offset, atom_offset, react_mole_roles, react_edge_index, react_edge_feat, react_atom_feat, react_edge_offset, react_atom_offset
+
+
+def parse_one_reaction(one_reaction):
+    role_smiles_pairs: List[Tuple[str, List[str]]] = []
+    for k, v in one_reaction.items():
+        if k.startswith('inputs') and k.endswith('.type') and v.upper() == 'SMILES':
+            role = one_reaction.get(k.split('identifiers[')[0] + 'reaction_role', 'REACTANT').upper()
+        elif k.startswith('outcomes') and k.endswith('.type') and v.upper() == 'SMILES':
+            role = 'OUTCOME'
+        else:
+            role = None
+        if role is not None:
+            for smiles in one_reaction[k.replace('.type', '.value')].split('.'):
+                role_smiles_pairs.append((role, smiles))
+    
+    if len(role_smiles_pairs) == 0:
+        for k, v in one_reaction.items():
+            if v.upper() == 'REACTION_SMILES':
+                left, mid, right = one_reaction[k.replace('.type', '.value')].split('>')
+                for reactant in left.split('.'):
+                    role_smiles_pairs.append(('REACTANT', reactant))
+                for solvent_or_catalyst in mid.split('.'):
+                    if any(x in solvent_or_catalyst for x in {'Pd', 'Pt', 'Fe', 'Au', 'Mn', 'Ni', 'Cu', 'Ag'}):
+                        role_smiles_pairs.append(('CATALYST', solvent_or_catalyst))
+                    else:
+                        role_smiles_pairs.append(('SOLVENT', solvent_or_catalyst))
+                for outcome in right.split('.'):
+                    role_smiles_pairs.append(('OUTCOME', outcome))
+                break
+        assert len(role_smiles_pairs) != 0
+    
+    return role_smiles_pairs
 
 
 if __name__ == '__main__':
