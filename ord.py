@@ -81,7 +81,7 @@ def main():
             dataset: List[Dict[str, str]] = json.load(fin)
         
         bad_reaction_ids = []
-        all_mole_smiles, all_mole_roles = [], []
+        all_mole_roles = []
         all_edge_index, all_edge_feat, all_atom_feat = [], [], []
         reaction_ids = []
         mole_offset, all_mole_offset = 0, [0]
@@ -102,11 +102,11 @@ def main():
                 reaction_ids.append(reaction_id)
                 (
                     mole_offset, edge_offset, atom_offset,
-                    react_mole_smiles, react_mole_roles,
+                    react_mole_roles,
                     react_edge_index, react_edge_feat, react_atom_feat,
                     react_edge_offset, react_atom_offset,
                 ) = rets
-                all_mole_smiles.extend(react_mole_smiles), all_mole_roles.extend(react_mole_roles)
+                all_mole_roles.extend(react_mole_roles)
                 all_edge_index.extend(react_edge_index), all_edge_feat.extend(react_edge_feat), all_atom_feat.extend(react_atom_feat)
                 all_mole_offset.append(mole_offset)
                 all_edge_offset.extend(react_edge_offset)
@@ -134,10 +134,9 @@ def main():
         # save as tensors
         tensors = {
             'json_name': json_name,
-            'bad_reaction_ids': torch.tensor(bad_reaction_ids, dtype=torch.int32),    # 存放bad_reactions的
+            'bad_reaction_ids': torch.tensor(bad_reaction_ids, dtype=torch.uint8),
             'reaction_ids': torch.tensor(reaction_ids, dtype=torch.uint8),
             'mole_offset': torch.tensor(all_mole_offset, dtype=torch.int32),
-            'mole_smiles': torch.tensor(all_mole_smiles, dtype=torch.uint8),
             'mole_roles': torch.tensor(all_mole_roles, dtype=torch.int32),
             'edge_offset': torch.tensor(all_edge_offset, dtype=torch.int32),
             'edge_indices': torch.cat(all_edge_index, dim=0),
@@ -168,7 +167,7 @@ def main():
 
 
 def parse_reaction(bar, role2idx, one_reaction, mole_offset, edge_offset, atom_offset):
-    react_mole_smiles, react_mole_roles = [], []
+    react_mole_roles = []
     react_edge_index, react_edge_feat, react_atom_feat = [], [], []
     react_edge_offset, react_atom_offset = [], []
     for k, v in one_reaction.items():
@@ -191,11 +190,10 @@ def parse_reaction(bar, role2idx, one_reaction, mole_offset, edge_offset, atom_o
                 atom_offset += V
                 react_atom_offset.append(atom_offset)
 
-                react_mole_smiles.append([ord(ch) for ch in smiles])
                 react_mole_roles.append(role2idx[role])
                 mole_offset += 1
                 
-    return mole_offset, edge_offset, atom_offset, react_mole_smiles, react_mole_roles, react_edge_index, react_edge_feat, react_atom_feat, react_edge_offset, react_atom_offset
+    return mole_offset, edge_offset, atom_offset, react_mole_roles, react_edge_index, react_edge_feat, react_atom_feat, react_edge_offset, react_atom_offset
 
 
 if __name__ == '__main__':
