@@ -78,28 +78,31 @@ def main():
             continue
 
         with open(str(jsons_root / json_name), 'r') as fin:
-            dataset: List[Dict[str, str]] = json.load(fin)
+            reactions: List[Dict[str, str]] = json.load(fin)
         
-        bad_reaction_ids = []
+        bad_reaction_ids, reaction_ids = [], []
         all_mole_roles = []
         all_edge_index, all_edge_feat, all_atom_feat = [], [], []
-        reaction_ids = []
         mole_offset, all_mole_offset = 0, [0]
         edge_offset, all_edge_offset = 0, [0]
         atom_offset, all_atom_offset = 0, [0]
         
-        bar = tqdm.tqdm(dataset, desc=f'[{ds_desc}]', mininterval=1., dynamic_ncols=True)
+        bar = tqdm.tqdm(reactions, desc=f'[{ds_desc}]', mininterval=1., dynamic_ncols=True)
         stt = time.time()
         for i, one_reaction in enumerate(bar):
-            #             one_reaction['reaction_id'] example: ord-56b1f4bfeebc4b8ab990b9804e798aa7
-            reaction_id = one_reaction['reaction_id'].replace('ord-', '')
-            reaction_id = [int(ch, base=16) for ch in reaction_id]
+            one_reaction: Dict[str, str]
+            #              one_reaction['reaction_id'] example: ord-56b1f4bfeebc4b8ab990b9804e798aa7
+            rid_as_a_str = one_reaction['reaction_id'].replace('ord-', '')
+            rid_as_32_ints = [int(ch, base=16) for ch in rid_as_a_str]
             try:
-                rets = parse_reaction(bar, role2idx, one_reaction, mole_offset, edge_offset, atom_offset)
+                # GET (but not UPDATE) new xxx_offset, all_xxx, etc.
+                rets = reaction2graphs(bar, role2idx, one_reaction, mole_offset, edge_offset, atom_offset)
             except:
-                bad_reaction_ids.append(reaction_id)
+                # no need to ROLLBACK xxx_offset, all_xxx, etc. (NOT UPDATED)
+                bad_reaction_ids.append(rid_as_32_ints)
             else:
-                reaction_ids.append(reaction_id)
+                # UPDATE xxx_offset, all_xxx, etc.
+                reaction_ids.append(rid_as_32_ints)
                 (
                     mole_offset, edge_offset, atom_offset,
                     react_mole_roles,
@@ -113,7 +116,7 @@ def main():
                 all_atom_offset.extend(react_atom_offset)
         bar.close()
         
-        num_reactions = len(dataset)
+        num_reactions = len(reactions)
         # per-reaction stats
         avg_mole_cnt, avg_edge_cnt, avg_atom_cnt = mole_offset / num_reactions, edge_offset / num_reactions, atom_offset / num_reactions
         if len(all_edge_index) == 0:    # buggy dataset!
@@ -124,49 +127,54 @@ def main():
         # show per-reaction stats
         print(f'{time_str()} [{json_name}]: #bad={len(bad_reaction_ids)}, #Mol={avg_mole_cnt:.2f}, #E={avg_edge_cnt:.2f}, #A={avg_atom_cnt:.2f}, cost={time.time()-stt:.2f}s')
         if len(bad_reaction_ids):
-            str_rids = []
+            rid_as_strs = []
             for rid_as_32_ints in bad_reaction_ids:
                 rid_as_32_chars = [f'{i:x}' for i in rid_as_32_ints]
-                str_rid = ''.join(rid_as_32_chars)
-                str_rids.append(str_rid)
-            print(f'   ***** [{json_name}]: bad_reaction_ids={str_rids}')
+                rid_as_a_str = 'ord-' + ''.join(rid_as_32_chars)
+                rid_as_strs.append(rid_as_a_str)
+            print(f'   ***** [{json_name}]: bad_reaction_ids={rid_as_strs}')
         
-        # save as tensors
-        tensors = {
-            'json_name': json_name,
-            'bad_reaction_ids': torch.tensor(bad_reaction_ids, dtype=torch.uint8),
-            'reaction_ids': torch.tensor(reaction_ids, dtype=torch.uint8),
-            'mole_offset': torch.tensor(all_mole_offset, dtype=torch.int32),
-            'mole_roles': torch.tensor(all_mole_roles, dtype=torch.int32),
-            'edge_offset': torch.tensor(all_edge_offset, dtype=torch.int32),
-            'edge_indices': torch.cat(all_edge_index, dim=0),
-            'edge_features': torch.cat(all_edge_feat, dim=0),
-            'atom_offset': torch.tensor(all_atom_offset, dtype=torch.int32),
-            'atom_features': torch.cat(all_atom_feat, dim=0),
-        }
-        tensors['num_moles_per_reaction'] = tensors['mole_offset'][1:] - tensors['mole_offset'][:-1]
-        tensors['num_edges_per_mole'] = tensors['edge_offset'][1:] - tensors['edge_offset'][:-1]
-        tensors['num_atoms_per_mole'] = tensors['atom_offset'][1:] - tensors['atom_offset'][:-1]
-
-        max_rid = tensors['mole_offset'].size(0)
-        assert max_rid == tensors['reaction_ids'].size(0) + 1
-        
-        max_mid = tensors['atom_offset'].size(0)
-        assert max_mid == tensors['mole_offset'][-1] + 1
-        assert max_mid == tensors['edge_offset'].size(0)
-        assert max_mid == tensors['mole_roles'].size(0) + 1
-
-        max_aid = tensors['atom_features'].size(0)
-        assert max_aid == tensors['atom_offset'][-1]
-
-        max_eid = tensors['edge_features'].size(0)
-        assert max_eid == tensors['edge_offset'][-1]
-        assert max_eid == tensors['edge_indices'].size(0)
-        
-        torch.save(tensors, torch_file)
+        check_and_save(torch_file, json_name, bad_reaction_ids, reaction_ids, all_mole_offset, all_mole_roles, all_edge_offset, all_edge_index, all_edge_feat, all_atom_offset, all_atom_feat)
 
 
-def parse_reaction(bar, role2idx, one_reaction, mole_offset, edge_offset, atom_offset):
+def check_and_save(torch_file, json_name, bad_reaction_ids, reaction_ids, all_mole_offset, all_mole_roles, all_edge_offset, all_edge_index, all_edge_feat, all_atom_offset, all_atom_feat):
+    tensors = {
+        'json_name': json_name,
+        'bad_reaction_ids': torch.tensor(bad_reaction_ids, dtype=torch.uint8),
+        'reaction_ids': torch.tensor(reaction_ids, dtype=torch.uint8),
+        'mole_offset': torch.tensor(all_mole_offset, dtype=torch.int32),
+        'mole_roles': torch.tensor(all_mole_roles, dtype=torch.int32),
+        'edge_offset': torch.tensor(all_edge_offset, dtype=torch.int32),
+        'edge_indices': torch.cat(all_edge_index, dim=0),
+        'edge_features': torch.cat(all_edge_feat, dim=0),
+        'atom_offset': torch.tensor(all_atom_offset, dtype=torch.int32),
+        'atom_features': torch.cat(all_atom_feat, dim=0),
+    }
+    tensors['num_moles_per_reaction'] = tensors['mole_offset'][1:] - tensors['mole_offset'][:-1]
+    tensors['num_edges_per_mole'] = tensors['edge_offset'][1:] - tensors['edge_offset'][:-1]
+    tensors['num_atoms_per_mole'] = tensors['atom_offset'][1:] - tensors['atom_offset'][:-1]
+    
+    # check
+    max_rid = tensors['mole_offset'].size(0)
+    assert max_rid == tensors['reaction_ids'].size(0) + 1
+    
+    max_mid = tensors['atom_offset'].size(0)
+    assert max_mid == tensors['mole_offset'][-1] + 1
+    assert max_mid == tensors['edge_offset'].size(0)
+    assert max_mid == tensors['mole_roles'].size(0) + 1
+    
+    max_aid = tensors['atom_features'].size(0)
+    assert max_aid == tensors['atom_offset'][-1]
+    
+    max_eid = tensors['edge_features'].size(0)
+    assert max_eid == tensors['edge_offset'][-1]
+    assert max_eid == tensors['edge_indices'].size(0)
+    
+    # save
+    torch.save(tensors, torch_file)
+
+
+def reaction2graphs(bar, role2idx, one_reaction, mole_offset, edge_offset, atom_offset):
     react_mole_roles = []
     react_edge_index, react_edge_feat, react_atom_feat = [], [], []
     react_edge_offset, react_atom_offset = [], []
@@ -179,6 +187,9 @@ def parse_reaction(bar, role2idx, one_reaction, mole_offset, edge_offset, atom_o
             role = None
         if role is not None:
             for smiles in one_reaction[k.replace('.type', '.value')].split('.'):
+                react_mole_roles.append(role2idx[role])
+                mole_offset += 1
+                
                 #  (E, 2)     (E, 3)     (V, 9)
                 edge_index, edge_feat, atom_feat = smiles2graph.smiles2graph(smiles)
                 react_edge_index.append(edge_index), react_edge_feat.append(edge_feat), react_atom_feat.append(atom_feat)
@@ -189,9 +200,6 @@ def parse_reaction(bar, role2idx, one_reaction, mole_offset, edge_offset, atom_o
                 react_edge_offset.append(edge_offset)
                 atom_offset += V
                 react_atom_offset.append(atom_offset)
-
-                react_mole_roles.append(role2idx[role])
-                mole_offset += 1
                 
     return mole_offset, edge_offset, atom_offset, react_mole_roles, react_edge_index, react_edge_feat, react_atom_feat, react_edge_offset, react_atom_offset
 
