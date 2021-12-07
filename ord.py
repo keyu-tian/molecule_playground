@@ -113,6 +113,7 @@ def tensorfy_json_data():
             rid_as_32_ints = [int(ch, base=16) for ch in rid_as_a_str]
             try:
                 role_smiles_pairs = parse_one_reaction(one_reaction)
+                rets = reaction2graphs(bar, role2idx, role_smiles_pairs, mole_offset, edge_offset, atom_offset)
             except:
                 # no need to ROLLBACK xxx_offset, all_xxx, etc. (NOT UPDATED)
                 bad_reaction_ids.append(rid_as_32_ints)
@@ -124,7 +125,7 @@ def tensorfy_json_data():
                     react_mole_roles,
                     react_edge_index, react_edge_feat, react_atom_feat,
                     react_edge_offset, react_atom_offset,
-                ) = reaction2graphs(bar, role2idx, role_smiles_pairs, mole_offset, edge_offset, atom_offset)
+                ) = rets
                 all_mole_roles.extend(react_mole_roles)
                 all_edge_index.extend(react_edge_index), all_edge_feat.extend(react_edge_feat), all_atom_feat.extend(react_atom_feat)
                 all_mole_offset.append(mole_offset)
