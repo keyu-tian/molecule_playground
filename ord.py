@@ -78,8 +78,7 @@ def download_and_jsonfy_data():
         print(f'{time_str()} {ds_desc} dumped @ {output_file}, load={load_t-start_t:.2f} cast={cast_t-start_t:.2f}, dump={dump_t-cast_t:.2f}')
 
 
-def tensorfy_json_data(args):
-    rank, json_names = args
+def tensorfy_json_data(json_name):
     jsons_root = pathlib.Path(os.path.expanduser('~')) / 'datasets' / 'ord-data-json'
     torch_root = pathlib.Path(os.path.expanduser('~')) / 'datasets' / 'ord-data-torch'
     os.makedirs(torch_root, exist_ok=True)
@@ -92,85 +91,84 @@ def tensorfy_json_data(args):
     }
     
     meta = defaultdict(list)
-    for json_i, json_name in enumerate(json_names):
-        torch_file = torch_root / json_name.replace('.json', '.pth')
-        if os.path.exists(torch_file):  # skip this dataset
-            print(f'{time_str()} [{json_name}]: already preprocessed !')
-            continue
-        
-        with open(str(jsons_root / json_name), 'r') as fin:
-            reactions: List[Dict[str, str]] = json.load(fin)
+    torch_file = torch_root / json_name.replace('.json', '.pth')
+    if os.path.exists(torch_file):  # skip this dataset
+        print(f'{time_str()} [{json_name}]: already preprocessed !', flush=True)
+        return {}
+    
+    with open(str(jsons_root / json_name), 'r') as fin:
+        reactions: List[Dict[str, str]] = json.load(fin)
 
-        bad_reaction_idx, bad_reaction_ids, reaction_ids = [], [], []
-        all_mole_roles = []
-        all_edge_index, all_edge_feat, all_atom_feat = [], [], []
-        mole_offset, all_mole_offset = 0, [0]
-        edge_offset, all_edge_offset = 0, [0]
-        atom_offset, all_atom_offset = 0, [0]
-        
-        bar = tqdm.tqdm(reactions, desc=f'[{json_name} ({json_i+1:2d}/{len(json_names)})]', mininterval=1., dynamic_ncols=True)
-        stt = time.time()
-        for i, one_reaction in enumerate(bar):
-            one_reaction: Dict[str, str]
-            #              one_reaction['reaction_id'] example: ord-56b1f4bfeebc4b8ab990b9804e798aa7
-            rid_as_a_str = one_reaction['reaction_id'].replace('ord-', '')
-            rid_as_32_ints = [int(ch, base=16) for ch in rid_as_a_str]
-            try:
-                role_smiles_pairs = parse_one_reaction(one_reaction)
-                rets = reaction2graphs(bar, role2idx, role_smiles_pairs, mole_offset, edge_offset, atom_offset)
-            except:
-                # no need to ROLLBACK xxx_offset, all_xxx, etc. (NOT UPDATED)
-                bad_reaction_idx.append(i)
-                bad_reaction_ids.append(rid_as_32_ints)
-            else:
-                # UPDATE xxx_offset, all_xxx, etc.
-                reaction_ids.append(rid_as_32_ints)
-                (
-                    mole_offset, edge_offset, atom_offset,
-                    react_mole_roles,
-                    react_edge_index, react_edge_feat, react_atom_feat,
-                    react_edge_offset, react_atom_offset,
-                ) = rets
-                all_mole_roles.extend(react_mole_roles)
-                all_edge_index.extend(react_edge_index), all_edge_feat.extend(react_edge_feat), all_atom_feat.extend(react_atom_feat)
-                all_mole_offset.append(mole_offset)
-                all_edge_offset.extend(react_edge_offset)
-                all_atom_offset.extend(react_atom_offset)
-        bar.close()
-        
-        num_reactions = len(reaction_ids)
-        buggy_dataset = num_reactions == 0
-        if buggy_dataset:
-            num_reactions = -1
-        # per-reaction stats
-        avg_mole_cnt, avg_edge_cnt, avg_atom_cnt = mole_offset / num_reactions, edge_offset / num_reactions, atom_offset / num_reactions
-        meta['json_name'].append(json_name)
-        meta['#R'].append(num_reactions)
-        meta['#M_per_R'].append(round(avg_mole_cnt, 2))
-        meta['#E_per_R'].append(round(avg_edge_cnt, 2))
-        meta['#A_per_R'].append(round(avg_atom_cnt, 2))
-        time_cost = time.time()-stt
-        meta['cost'].append(round(time_cost, 2))
-        meta['#bad_reac'].append(len(bad_reaction_ids))
-        meta['buggy'].append(buggy_dataset)
-        
-        if buggy_dataset:    # buggy dataset!
-            print(f'{time_str()} [{json_name}]: bad_dataset !')
-            torch.save({'json_name': json_name}, str(torch_file) + '.bug')
-            continue
-        
-        # show per-reaction stats
-        print(f'{time_str()} [{json_name}]: #bad={len(bad_reaction_ids)}, #Mol={avg_mole_cnt:.2f}, #E={avg_edge_cnt:.2f}, #A={avg_atom_cnt:.2f}, cost={time_cost:.2f}s')
-        if len(bad_reaction_ids):
-            print(f'   ***** [{json_name}]: bad_reaction_idx={bad_reaction_idx}')
-            rid_as_strs = []
-            for rid_as_32_ints in bad_reaction_ids:
-                rid_as_32_chars = [f'{i:x}' for i in rid_as_32_ints]
-                rid_as_a_str = 'ord-' + ''.join(rid_as_32_chars)
-                rid_as_strs.append(rid_as_a_str)
-            print(f'   ***** [{json_name}]: bad_reaction_ids={rid_as_strs}')
-        
-        check_and_save(torch_file, json_name, bad_reaction_idx, bad_reaction_ids, reaction_ids, all_mole_offset, all_mole_roles, all_edge_offset, all_edge_index, all_edge_feat, all_atom_offset, all_atom_feat)
+    bad_reaction_idx, bad_reaction_ids, reaction_ids = [], [], []
+    all_mole_roles = []
+    all_edge_index, all_edge_feat, all_atom_feat = [], [], []
+    mole_offset, all_mole_offset = 0, [0]
+    edge_offset, all_edge_offset = 0, [0]
+    atom_offset, all_atom_offset = 0, [0]
+    
+    bar = tqdm.tqdm(reactions, desc=f'[{json_name}]', mininterval=10., maxinterval=20, dynamic_ncols=True)
+    stt = time.time()
+    for i, one_reaction in enumerate(bar):
+        one_reaction: Dict[str, str]
+        #              one_reaction['reaction_id'] example: ord-56b1f4bfeebc4b8ab990b9804e798aa7
+        rid_as_a_str = one_reaction['reaction_id'].replace('ord-', '')
+        rid_as_32_ints = [int(ch, base=16) for ch in rid_as_a_str]
+        try:
+            role_smiles_pairs = parse_one_reaction(one_reaction)
+            rets = reaction2graphs(bar, role2idx, role_smiles_pairs, mole_offset, edge_offset, atom_offset)
+        except:
+            # no need to ROLLBACK xxx_offset, all_xxx, etc. (NOT UPDATED)
+            bad_reaction_idx.append(i)
+            bad_reaction_ids.append(rid_as_32_ints)
+        else:
+            # UPDATE xxx_offset, all_xxx, etc.
+            reaction_ids.append(rid_as_32_ints)
+            (
+                mole_offset, edge_offset, atom_offset,
+                react_mole_roles,
+                react_edge_index, react_edge_feat, react_atom_feat,
+                react_edge_offset, react_atom_offset,
+            ) = rets
+            all_mole_roles.extend(react_mole_roles)
+            all_edge_index.extend(react_edge_index), all_edge_feat.extend(react_edge_feat), all_atom_feat.extend(react_atom_feat)
+            all_mole_offset.append(mole_offset)
+            all_edge_offset.extend(react_edge_offset)
+            all_atom_offset.extend(react_atom_offset)
+    bar.close()
+    
+    num_reactions = len(reaction_ids)
+    buggy_dataset = num_reactions == 0
+    if buggy_dataset:
+        num_reactions = -1
+    # per-reaction stats
+    avg_mole_cnt, avg_edge_cnt, avg_atom_cnt = mole_offset / num_reactions, edge_offset / num_reactions, atom_offset / num_reactions
+    meta['json_name'].append(json_name)
+    meta['#R'].append(num_reactions)
+    meta['#M_per_R'].append(round(avg_mole_cnt, 2))
+    meta['#E_per_R'].append(round(avg_edge_cnt, 2))
+    meta['#A_per_R'].append(round(avg_atom_cnt, 2))
+    time_cost = time.time()-stt
+    meta['cost'].append(round(time_cost, 2))
+    meta['#bad_reac'].append(len(bad_reaction_ids))
+    meta['buggy'].append(buggy_dataset)
+    
+    if buggy_dataset:    # buggy dataset!
+        print(f'{time_str()} [{json_name}]: bad_dataset !', flush=True)
+        torch.save({'json_name': json_name}, str(torch_file) + '.bug')
+        return meta
+    
+    # show per-reaction stats
+    print(f'{time_str()} [{json_name}]: #bad={len(bad_reaction_ids)}, #Mol={avg_mole_cnt:.2f}, #E={avg_edge_cnt:.2f}, #A={avg_atom_cnt:.2f}, cost={time_cost:.2f}s', flush=True)
+    if len(bad_reaction_ids):
+        print(f'   ***** [{json_name}]: bad_reaction_idx={bad_reaction_idx}', flush=True)
+        rid_as_strs = []
+        for rid_as_32_ints in bad_reaction_ids:
+            rid_as_32_chars = [f'{i:x}' for i in rid_as_32_ints]
+            rid_as_a_str = 'ord-' + ''.join(rid_as_32_chars)
+            rid_as_strs.append(rid_as_a_str)
+        print(f'   ***** [{json_name}]: bad_reaction_ids={rid_as_strs}', flush=True)
+    
+    check_and_save(torch_file, json_name, bad_reaction_idx, bad_reaction_ids, reaction_ids, all_mole_offset, all_mole_roles, all_edge_offset, all_edge_index, all_edge_feat, all_atom_offset, all_atom_feat)
     
     return meta
 
@@ -280,8 +278,9 @@ def main():
         json_names[i % world_size].append(json_name)
         
     with Pool(world_size) as pool:
-        metas: List[Dict[str, List]] = list(pool.imap(tensorfy_json_data, [(rk, json_names[rk]) for rk in range(world_size)], chunksize=1))
-    meta = {k: [] for k in metas[0].keys()}
+        metas: List[Dict[str, List]] = list(pool.imap(tensorfy_json_data, global_json_names, chunksize=1))
+    
+    meta = {k: [] for k in ['json_name', '#R', '#M_per_R', '#E_per_R', '#A_per_R', 'cost', '#bad_reac', 'buggy']}
     for m in metas:
         for k, v in m.items():
             meta[k].extend(v)
