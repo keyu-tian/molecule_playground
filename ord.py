@@ -98,7 +98,7 @@ def tensorfy_json_data(json_name):
     
     with open(str(jsons_root / json_name), 'r') as fin:
         reactions: List[Dict[str, str]] = json.load(fin)
-
+    
     bad_reaction_idx, bad_reaction_ids, reaction_ids = [], [], []
     all_mole_roles = []
     all_edge_index, all_edge_feat, all_atom_feat = [], [], []
@@ -250,13 +250,15 @@ def parse_one_reaction(one_reaction: Dict[str, str]):
         for k, v in one_reaction.items():
             if v.upper() == 'REACTION_SMILES':
                 left, mid, right = one_reaction[k.replace('.type', '.value')].split('>')
+                assert len(left) > 0 and len(right) > 0
                 for reactant in left.split('.'):
                     role_smiles_pairs.add(('REACTANT', reactant))
-                for solvent_or_catalyst in mid.split('.'):
-                    if any(x in solvent_or_catalyst for x in {'Cr', 'Mn', 'Fe', 'Co', 'Ni', 'Cu', 'Ag', 'Au', 'Pt', 'Pd'}):
-                        role_smiles_pairs.add(('CATALYST', solvent_or_catalyst))
-                    else:
-                        role_smiles_pairs.add(('SOLVENT', solvent_or_catalyst))
+                if len(mid) > 0:
+                    for solvent_or_catalyst in mid.split('.'):
+                        if any(x in solvent_or_catalyst for x in {'Cr', 'Mn', 'Fe', 'Co', 'Ni', 'Cu', 'Ag', 'Au', 'Pt', 'Pd'}):
+                            role_smiles_pairs.add(('CATALYST', solvent_or_catalyst))
+                        else:
+                            role_smiles_pairs.add(('SOLVENT', solvent_or_catalyst))
                 for outcome in right.split('.'):
                     role_smiles_pairs.add(('OUTCOME', outcome))
                 break
@@ -271,7 +273,7 @@ def main():
     jsons_root = pathlib.Path(os.path.expanduser('~')) / 'datasets' / 'ord-data-json'
     global_json_names = os.listdir(jsons_root)
     random.shuffle(global_json_names)
-
+    
     world_size = cpu_count()
     with Pool(world_size) as pool:
         metas: List[Dict[str, List]] = list(pool.imap(tensorfy_json_data, global_json_names, chunksize=1))
