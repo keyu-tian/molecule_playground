@@ -3,13 +3,14 @@ import json
 import os
 import pathlib
 import random
+import sys
 import time
 import zipfile
 from collections import Counter
 from collections import defaultdict
 from multiprocessing import Pool
 from multiprocessing import cpu_count
-from typing import List, Dict, Tuple, Set
+from typing import List, Dict, Tuple, Set, Union
 
 import pandas
 import torch
@@ -20,10 +21,20 @@ from ord_schema import message_helpers
 from ord_schema.proto import dataset_pb2
 # conda install -c rdkit rdkit
 from rdkit import RDLogger, Chem
-
 RDLogger.DisableLog('rdApp.*')
 
 import smiles2graph
+
+role2idx = {
+    'REACTANT': 0, 'REATANT': 0, 'REAGENT': 0,
+    'SOLVENT': 1,
+    'CATALYST': 2, 'INTERNAL_STANDARD': 2,
+    'OUTCOME': 3, 'PRODUCT': 3,
+}
+idx2role = {}
+for k, v in role2idx.items():
+    if v not in idx2role:
+        idx2role[v] = k
 
 
 def time_str():
@@ -78,42 +89,45 @@ def download_and_jsonfy_data():
         print(f'{time_str()} {ds_desc} dumped @ {output_file}, load={load_t-start_t:.2f} cast={cast_t-start_t:.2f}, dump={dump_t-cast_t:.2f}')
 
 
-role2idx = {
-    'REACTANT': 0, 'REATANT': 0, 'REAGENT': 0,
-    'SOLVENT': 1,
-    'CATALYST': 2, 'INTERNAL_STANDARD': 2,
-    'OUTCOME': 3, 'PRODUCT': 3,
-}
-idx2role = {}
-for k, v in role2idx.items():
-    if v not in idx2role:
-        idx2role[v] = k
-
-
 def canonicalize_smiles(smiles: str):
     return Chem.MolToSmiles(Chem.MolFromSmiles(smiles)) if len(smiles) else ''
 
 
-def tensorfy_json_data(json_name):
-    # todo: blacklist
-    blacklist = set()
-    
-    jsons_root = pathlib.Path(os.path.expanduser('~')) / 'datasets' / 'ord-data-json'
-    torch_root = pathlib.Path(os.path.expanduser('~')) / 'datasets' / 'ord-data-torch'
-    stats_root = pathlib.Path(os.path.expanduser('~')) / 'datasets' / 'ord-data-stats'
-    os.makedirs(torch_root, exist_ok=True)
-    os.makedirs(stats_root, exist_ok=True)
-    
-    meta = defaultdict(list)
-    torch_file = torch_root / json_name.replace('.json', '.pth')
-    stats_file = stats_root / json_name
+def tensorfy_json_data(args):
+    json_name, blacklist_name = args
+    based_on_canonicalized_reactions = isinstance(json_name, list)
+    if based_on_canonicalized_reactions: # based_on_canonicalized_reactions
+        reactions, uspto_root = args
+        reactions: List[str]
+        uspto_root: str
+        torch_file = os.path.join(os.path.basename(uspto_root), 'tensor.pth')
+        stats_file = os.path.join(os.path.basename(uspto_root), 'stats.json')
+        blacklist = set()
+        
+    else:
+        if blacklist_name is not None and len(blacklist_name):
+            with open(blacklist_name, 'r') as fp:
+                blacklist = set(json.load(fp))
+        else:
+            blacklist = set()
+        
+        jsons_root = pathlib.Path(os.path.expanduser('~')) / 'datasets' / 'ord-data-json'
+        torch_root = pathlib.Path(os.path.expanduser('~')) / 'datasets' / 'ord-data-torch'
+        stats_root = pathlib.Path(os.path.expanduser('~')) / 'datasets' / 'ord-data-stats'
+        os.makedirs(torch_root, exist_ok=True)
+        os.makedirs(stats_root, exist_ok=True)
+        
+        torch_file = torch_root / json_name.replace('.json', '.pth')
+        stats_file = stats_root / json_name
+        
+        with open(str(jsons_root / json_name), 'r') as fin:
+            reactions: List[Dict[str, str]] = json.load(fin)
+
     if os.path.exists(torch_file):  # skip this dataset
         print(f'{time_str()} [{json_name}]: already preprocessed !', flush=True)
         return {}
-    
-    with open(str(jsons_root / json_name), 'r') as fin:
-        reactions: List[Dict[str, str]] = json.load(fin)
-    
+
+    meta = defaultdict(list)
     bad_reaction_idx, bad_reaction_ids = [], []
     blk_reaction_idx, blk_reaction_ids = [], []
     reaction_ids = []
@@ -127,17 +141,28 @@ def tensorfy_json_data(json_name):
     stt = time.time()
     num_atoms_diff_stats = defaultdict(int)
     for i, one_reaction in enumerate(bar):
-        one_reaction: Dict[str, str]
-        #              one_reaction['reaction_id'] example: ord-56b1f4bfeebc4b8ab990b9804e798aa7
-        rid_as_a_str = one_reaction['reaction_id'].replace('ord-', '')
-        rid_as_32_ints = [int(ch, base=16) for ch in rid_as_a_str]
+        one_reaction: Union[Dict[str, str], str]
+        
+        if based_on_canonicalized_reactions:
+            rid_as_32_ints = [0] * 16
+        else:
+            #              one_reaction['reaction_id'] example: ord-56b1f4bfeebc4b8ab990b9804e798aa7
+            rid_as_a_str = one_reaction['reaction_id'].replace('ord-', '')
+            rid_as_32_ints = [int(ch, base=16) for ch in rid_as_a_str]
+        
         try:
-            role_smiles_pairs, num_atoms_diff = parse_one_reaction(one_reaction, blacklist)
-            if role_smiles_pairs is None:  # in blacklist
-                rets = None
-            else:
+            if based_on_canonicalized_reactions:
+                roles_smiles = reaction_smiles_to_roles_smiles(one_reaction)
+                R, C, S, O, canonicalized_reaction, num_atoms_diff = roles_smiles_to_reaction_smiles(roles_smiles)
+                role_smiles_pairs = role_smiles_to_role_smiles_pairs(R, C, S, O)
                 rets = reaction2graphs(bar, role_smiles_pairs, mole_offset, edge_offset, atom_offset)
-        except AttributeError:
+            else:
+                role_smiles_pairs, num_atoms_diff = parse_one_reaction_dict(one_reaction, blacklist)
+                if role_smiles_pairs is None:  # in blacklist
+                    rets = None
+                else:
+                    rets = reaction2graphs(bar, role_smiles_pairs, mole_offset, edge_offset, atom_offset)
+        except:
             # no need to ROLLBACK xxx_offset, all_xxx, etc. (NOT UPDATED)
             bad_reaction_idx.append(i)
             bad_reaction_ids.append(rid_as_32_ints)
@@ -272,7 +297,7 @@ def reaction2graphs(bar, role_smiles_pairs, mole_offset, edge_offset, atom_offse
     return mole_offset, edge_offset, atom_offset, react_mole_roles, react_edge_index, react_edge_feat, react_atom_feat, react_edge_offset, react_atom_offset
 
 
-def parse_one_reaction(one_reaction: Dict[str, str], blacklist: Set[str]):
+def parse_one_reaction_dict(one_reaction: Dict[str, str], blacklist: Set[str]):
     roles_smiles = {v: [] for v in role2idx.values()}
     for k, v in one_reaction.items():
         if k.startswith('inputs') and k.endswith('.type') and v.upper() == 'SMILES':
@@ -290,23 +315,56 @@ def parse_one_reaction(one_reaction: Dict[str, str], blacklist: Set[str]):
     if len(roles_smiles[0]) == 0 or len(roles_smiles[3]) == 0:
         for k, v in one_reaction.items():
             if v.upper() == 'REACTION_SMILES':
-                R_str, mid, O_str = one_reaction[k.replace('.type', '.value')].split('|')[0].strip().split('>')
-                roles_smiles[0] = list(filter(len, map(str.strip, R_str.split('.'))))
-                mid = '.'.join(filter(len, map(str.strip, mid.split('.'))))
-                roles_smiles[3] = list(filter(len, map(str.strip, O_str.split('.'))))
-                if len(mid) > 0:
-                    for catalyst_or_solvent in mid.split('.'):
-                        if any(x in catalyst_or_solvent for x in {
-                            'Sc', 'Ti', 'V' , 'Cr', 'Mn', 'Fe', 'Co', 'Ni', 'Cu', 'Zn',
-                            'Y' , 'Zr', 'Nb', 'Mo', 'Tc', 'Ru', 'Rh', 'Pd', 'Ag', 'Cd',
-                            'W', 'Os', 'Ir', 'Pt', 'Au', 'Hg', 'Tl',
-                            'Pb', 'Bi',
-                        }):
-                            roles_smiles[2].append(catalyst_or_solvent)
-                        else:
-                            roles_smiles[1].append(catalyst_or_solvent)
+                roles_smiles = reaction_smiles_to_roles_smiles(one_reaction[k.replace('.type', '.value')].split('|')[0])
                 break
+
+    R, C, S, O, s, num_atoms_diff = roles_smiles_to_reaction_smiles(roles_smiles)
+    if s in blacklist:
+        return None, None
+    return role_smiles_to_role_smiles_pairs(R, C, S, O), num_atoms_diff
+
+
+def role_smiles_to_role_smiles_pairs(R: str, C: str, S: str, O: str):
+    role_smiles_pairs: List[Tuple[int, str]] = []
+    assert R and O
+    for x in R.split('.'):
+        role_smiles_pairs.append((role2idx['REACTANT'], x))
+    for x in C.split('.'):
+        role_smiles_pairs.append((role2idx['CATALYST'], x))
+    for x in S.split('.'):
+        role_smiles_pairs.append((role2idx['SOLVENT'], x))
+    for x in O.split('.'):
+        role_smiles_pairs.append((role2idx['OUTCOME'], x))
+    return role_smiles_pairs
+
+
+def roles_smiles_to_reaction_smiles(roles_smiles):
+    R, C, S, O = map(Chem.MolFromSmiles, ('.'.join(roles_smiles[0]), '.'.join(roles_smiles[1]), '.'.join(roles_smiles[2]), '.'.join(roles_smiles[3])))
+    num_atoms_diff = R.GetNumHeavyAtoms() - O.GetNumHeavyAtoms()
+    R, C, S, O = map(Chem.MolToSmiles, (R, C, S, O))
+    s = R + '>' + '.'.join(filter(len, (C, S))) + '>' + O
+    return R, C, S, O, s, num_atoms_diff
+
+
+def reaction_smiles_to_roles_smiles(reaction_smiles: str):
+    roles_smiles = {v: [] for v in role2idx.values()}
     
+    R_str, mid, O_str = reaction_smiles.strip().split('>')
+    roles_smiles[0] = list(filter(len, map(str.strip, R_str.split('.'))))
+    mid = '.'.join(filter(len, map(str.strip, mid.split('.'))))
+    roles_smiles[3] = list(filter(len, map(str.strip, O_str.split('.'))))
+    if len(mid) > 0:
+        for catalyst_or_solvent in mid.split('.'):
+            if any(x in catalyst_or_solvent for x in {
+                'Sc', 'Ti', 'V' , 'Cr', 'Mn', 'Fe', 'Co', 'Ni', 'Cu', 'Zn',
+                'Y' , 'Zr', 'Nb', 'Mo', 'Tc', 'Ru', 'Rh', 'Pd', 'Ag', 'Cd',
+                'W', 'Os', 'Ir', 'Pt', 'Au', 'Hg', 'Tl',
+                'Pb', 'Bi',
+            }):
+                roles_smiles[2].append(catalyst_or_solvent)
+            else:
+                roles_smiles[1].append(catalyst_or_solvent)
+
     def clamp(l: List[str], max_n: int):
         nl = []
         for k, v in Counter(l).items():
@@ -320,54 +378,59 @@ def parse_one_reaction(one_reaction: Dict[str, str], blacklist: Set[str]):
     roles_smiles[2] = clamp(roles_smiles[2], max_n=6)
     roles_smiles[3] = clamp(roles_smiles[3], max_n=6)
     
-    R, C, S, O = map(Chem.MolFromSmiles, ('.'.join(roles_smiles[0]), '.'.join(roles_smiles[1]), '.'.join(roles_smiles[2]), '.'.join(roles_smiles[3])))
-    num_atoms_diff = R.GetNumHeavyAtoms() - O.GetNumHeavyAtoms()
-    # todo dbg
-    # try:
-    #     num_atoms_diff = R.GetNumHeavyAtoms() - O.GetNumHeavyAtoms()
-    # except Exception as e:
-    #     print(f'[buggy] R={R_str}, C={C_str}, S={S_str}, O={O_str}')
-    #     print(f'[roles_smiles] {roles_smiles}')
-    #     raise e
-        
-    R, C, S, O = map(Chem.MolToSmiles, (R, C, S, O))
-    
-    s = R + '>' + '.'.join(filter(len, (C, S))) + '>' + O
-    if s in blacklist:
-        return None, None
-    
-    role_smiles_pairs: List[Tuple[int, str]] = []
-    assert R and O
-    for x in R.split('.'):
-        role_smiles_pairs.append((role2idx['REACTANT'], x))
-    for x in C.split('.'):
-        role_smiles_pairs.append((role2idx['CATALYST'], x))
-    for x in S.split('.'):
-        role_smiles_pairs.append((role2idx['SOLVENT'], x))
-    for x in O.split('.'):
-        role_smiles_pairs.append((role2idx['OUTCOME'], x))
-    
-    return role_smiles_pairs, num_atoms_diff
+    return roles_smiles
 
 
 def main():
     # download_and_jsonfy_data()
+    assert sys.argv[1] in {'ord', 'uspto'}
+    prepare_uspto = sys.argv[1] == 'uspto'
     
-    jsons_root = pathlib.Path(os.path.expanduser('~')) / 'datasets' / 'ord-data-json'
-    global_json_names = os.listdir(jsons_root)
-    random.shuffle(global_json_names)
+    if prepare_uspto:
+        inputs = sys.argv[2:]
+        print(f'[smiles files] {inputs}')
+        
+        uspto_root = os.path.dirname(inputs[0])
+        output = os.path.join(uspto_root, 'blacklist.json')
+        if os.path.exists(output):
+            print(f'output file {output} already exists, returning!')
+            return
+
+        reactions = []
+        for f in inputs:
+            with open(f, 'r') as fin:
+                reactions.extend([l.split(' ')[0] for l in fin.read().splitlines()])
+            print(f'[after load {inputs}] len(reactions)={len(reactions)}')
+        canonicalized_reactions = []
+        for r in reactions:
+            roles_smiles = reaction_smiles_to_roles_smiles(r)
+            _, _, _, _, canonicalized_reaction, _ = roles_smiles_to_reaction_smiles(roles_smiles)
+            canonicalized_reactions.append(canonicalized_reaction)
+        
+        with open(output, 'w') as fp:
+            json.dump(canonicalized_reactions, fp, indent=2)
+
+        meta = tensorfy_json_data((canonicalized_reactions, uspto_root))
     
-    # todo dbg
-    # [tensorfy_json_data(x) for x in sorted(global_json_names)]
-    
-    world_size = cpu_count()
-    with Pool(world_size) as pool:
-        metas: List[Dict[str, List]] = list(pool.imap(tensorfy_json_data, global_json_names, chunksize=1))
-    
-    meta = {k: [] for k in ['json_name', '#R', '#M_per_R', '#E_per_R', '#A_per_R', 'cost', '#bad_reac', 'buggy']}
-    for m in metas:
-        for k, v in m.items():
-            meta[k].extend(v)
+    else:
+        blacklist_name = sys.argv[2] if len(sys.argv) > 2 else None
+        
+        jsons_root = pathlib.Path(os.path.expanduser('~')) / 'datasets' / 'ord-data-json'
+        global_json_names = os.listdir(jsons_root)
+        random.shuffle(global_json_names)
+        args = [(n, blacklist_name) for n in global_json_names]
+        
+        # todo dbg
+        # [tensorfy_json_data(x) for x in sorted(global_json_names)]
+        
+        world_size = cpu_count()
+        with Pool(world_size) as pool:
+            metas: List[Dict[str, List]] = list(pool.imap(tensorfy_json_data, args, chunksize=1))
+        
+        meta = defaultdict(list)
+        for m in metas:
+            for k, v in m.items():
+                meta[k].extend(v)
     
     meta = pandas.DataFrame(meta)
     meta = meta.sort_values(by=['json_name'])
