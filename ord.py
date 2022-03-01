@@ -399,7 +399,7 @@ def main():
         reactions = []
         for f in inputs:
             with open(f, 'r') as fin:
-                reactions.extend([l.split(' ')[0] for l in fin.read().splitlines()])
+                reactions.extend([l.split(' ')[0].split(',')[-1] for l in fin.read().splitlines()])
             print(f'[after load {inputs}] len(reactions)={len(reactions)}')
         canonicalized_reactions = []
         for r in reactions:
