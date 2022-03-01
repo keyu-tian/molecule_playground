@@ -402,7 +402,7 @@ def main():
                 reactions.extend([l.split(' ')[0].split(',')[-1] for l in fin.read().splitlines()])
             print(f'[after load {inputs}] len(reactions)={len(reactions)}')
         canonicalized_reactions = []
-        for r in reactions:
+        for r in tqdm.tqdm(reactions, desc=f'[read]', dynamic_ncols=True, mininterval=2., maxinterval=10):
             roles_smiles = reaction_smiles_to_roles_smiles(r)
             _, _, _, _, canonicalized_reaction, _ = roles_smiles_to_reaction_smiles(roles_smiles)
             canonicalized_reactions.append(canonicalized_reaction)
