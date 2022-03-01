@@ -82,6 +82,10 @@ role2idx = {
     'CATALYST': 2, 'INTERNAL_STANDARD': 2,
     'OUTCOME': 3, 'PRODUCT': 3,
 }
+idx2role = {}
+for k, v in role2idx.items():
+    if v not in idx2role:
+        idx2role[v] = k
 
 
 def canonicalize_smiles(smiles: str):
@@ -131,7 +135,7 @@ def tensorfy_json_data(json_name):
                 rets = None
             else:
                 rets = reaction2graphs(bar, role_smiles_pairs, mole_offset, edge_offset, atom_offset)
-        except:
+        except AttributeError:
             # no need to ROLLBACK xxx_offset, all_xxx, etc. (NOT UPDATED)
             bad_reaction_idx.append(i)
             bad_reaction_ids.append(rid_as_32_ints)
@@ -257,7 +261,7 @@ def reaction2graphs(bar, role_smiles_pairs, mole_offset, edge_offset, atom_offse
         react_edge_index.append(edge_index), react_edge_feat.append(edge_feat), react_atom_feat.append(atom_feat)
         
         E, V = edge_index.shape[0], atom_feat.shape[0]
-        bar.set_postfix_str(f'role={role:9s}, E={E:3d}, V={V:3d}', refresh=False)
+        bar.set_postfix_str(f'role={idx2role[role]:9s}, E={E:3d}, V={V:3d}', refresh=False)
         edge_offset += E
         react_edge_offset.append(edge_offset)
         atom_offset += V
