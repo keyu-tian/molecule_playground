@@ -305,7 +305,14 @@ def parse_one_reaction(one_reaction: Dict[str, str], blacklist: Set[str]):
         R, C, S, O = '.'.join(roles_smiles[0]), '.'.join(roles_smiles[1]), '.'.join(roles_smiles[2]), '.'.join(roles_smiles[3])
     
     R, C, S, O = map(Chem.MolFromSmiles, (R, C, S, O))
-    num_atoms_diff = R.GetNumHeavyAtoms() - O.GetNumHeavyAtoms()
+    # num_atoms_diff = R.GetNumHeavyAtoms() - O.GetNumHeavyAtoms()
+    # todo dbg
+    try:
+        num_atoms_diff = R.GetNumHeavyAtoms() - O.GetNumHeavyAtoms()
+    except Exception as e:
+        print(f'[buggy] R={R}, C={C}, S={S}, O={O}')
+        raise e
+        
     R, C, S, O = map(Chem.MolToSmiles, (R, C, S, O))
     
     s = R + '>' + '.'.join(filter(len, (C, S))) + '>' + O
@@ -332,6 +339,9 @@ def main():
     jsons_root = pathlib.Path(os.path.expanduser('~')) / 'datasets' / 'ord-data-json'
     global_json_names = os.listdir(jsons_root)
     random.shuffle(global_json_names)
+    
+    # todo dbg
+    [tensorfy_json_data(x) for x in sorted(global_json_names)]
     
     world_size = cpu_count()
     with Pool(world_size) as pool:
