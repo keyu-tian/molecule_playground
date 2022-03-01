@@ -126,6 +126,8 @@ def tensorfy_json_data(args):
     if os.path.exists(torch_file):  # skip this dataset
         print(f'{time_str()} [{json_name}]: already preprocessed !', flush=True)
         return {}
+    else:
+        print(f'{time_str()} torch_file={torch_file}, stats_file={stats_file}')
 
     meta = defaultdict(list)
     bad_reaction_idx, bad_reaction_ids = [], []
@@ -221,6 +223,7 @@ def tensorfy_json_data(args):
         print(f'   ***** [{json_name}]: bad_reaction_ids={rid_as_strs}', flush=True)
     
     check_and_save(torch_file, json_name, bad_reaction_idx, bad_reaction_ids, blk_reaction_idx, blk_reaction_ids, reaction_ids, all_mole_offset, all_mole_roles, all_edge_offset, all_edge_index, all_edge_feat, all_atom_offset, all_atom_feat)
+    print(f'{time_str()} torch_file saved @ {torch_file}')
     
     # save stats
     num_atoms_diff_stats = {
@@ -231,6 +234,7 @@ def tensorfy_json_data(args):
         json.dump({
             'num_atoms_diff_stats': num_atoms_diff_stats,
         }, fp, indent=2)
+    print(f'{time_str()} stats_file saved @ {stats_file}')
     
     return meta
 
@@ -279,6 +283,10 @@ def reaction2graphs(bar, role_smiles_pairs, mole_offset, edge_offset, atom_offse
     react_mole_roles = []
     react_edge_index, react_edge_feat, react_atom_feat = [], [], []
     react_edge_offset, react_atom_offset = [], []
+    
+    # todo 暂时set
+    role_smiles_pairs = set(role_smiles_pairs)
+    
     for role, smiles in role_smiles_pairs:
         react_mole_roles.append(role)
         mole_offset += 1
