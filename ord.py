@@ -281,7 +281,8 @@ def parse_one_reaction(one_reaction: Dict[str, str], blacklist: Set[str]):
             role = None
         if role is not None:
             for smiles in one_reaction[k.replace('.type', '.value')].split('.'):
-                roles_smiles[role2idx[role]].append(smiles)
+                if len(smiles):
+                    roles_smiles[role2idx[role]].append(smiles)
     
     if len(roles_smiles[0]) == 0 or len(roles_smiles[3]) == 0:
         for k, v in one_reaction.items():
