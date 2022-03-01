@@ -281,6 +281,7 @@ def parse_one_reaction(one_reaction: Dict[str, str], blacklist: Set[str]):
             role = None
         if role is not None:
             for smiles in one_reaction[k.replace('.type', '.value')].split('.'):
+                smiles = smiles.strip()
                 if len(smiles):
                     roles_smiles[role2idx[role]].append(smiles)
     
@@ -288,6 +289,9 @@ def parse_one_reaction(one_reaction: Dict[str, str], blacklist: Set[str]):
         for k, v in one_reaction.items():
             if v.upper() == 'REACTION_SMILES':
                 R_str, mid, O_str = one_reaction[k.replace('.type', '.value')].split('|')[0].strip().split('>')
+                R_str = '.'.join(filter(len, map(str.strip, R_str.split('.'))))
+                mid = '.'.join(filter(len, map(str.strip, mid.split('.'))))
+                O_str = '.'.join(filter(len, map(str.strip, O_str.split('.'))))
                 catalysts, solvents = [], []
                 if len(mid) > 0:
                     for catalyst_or_solvent in mid.split('.'):
