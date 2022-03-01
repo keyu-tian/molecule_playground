@@ -312,6 +312,7 @@ def parse_one_reaction(one_reaction: Dict[str, str], blacklist: Set[str]):
         num_atoms_diff = R.GetNumHeavyAtoms() - O.GetNumHeavyAtoms()
     except Exception as e:
         print(f'[buggy] R={R_str}, C={C_str}, S={S_str}, O={O_str}')
+        print(f'[roles_smiles] {roles_smiles}')
         raise e
         
     R, C, S, O = map(Chem.MolToSmiles, (R, C, S, O))
