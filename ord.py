@@ -5,10 +5,11 @@ import pathlib
 import random
 import time
 import zipfile
+from collections import Counter
 from collections import defaultdict
 from multiprocessing import Pool
 from multiprocessing import cpu_count
-from typing import List, Dict, Tuple, Set, Optional
+from typing import List, Dict, Tuple, Set
 
 import pandas
 import torch
@@ -19,6 +20,7 @@ from ord_schema import message_helpers
 from ord_schema.proto import dataset_pb2
 # conda install -c rdkit rdkit
 from rdkit import RDLogger, Chem
+
 RDLogger.DisableLog('rdApp.*')
 
 import smiles2graph
@@ -289,10 +291,9 @@ def parse_one_reaction(one_reaction: Dict[str, str], blacklist: Set[str]):
         for k, v in one_reaction.items():
             if v.upper() == 'REACTION_SMILES':
                 R_str, mid, O_str = one_reaction[k.replace('.type', '.value')].split('|')[0].strip().split('>')
-                R_str = '.'.join(filter(len, map(str.strip, R_str.split('.'))))
+                roles_smiles[0] = list(filter(len, map(str.strip, R_str.split('.'))))
                 mid = '.'.join(filter(len, map(str.strip, mid.split('.'))))
-                O_str = '.'.join(filter(len, map(str.strip, O_str.split('.'))))
-                catalysts, solvents = [], []
+                roles_smiles[3] = list(filter(len, map(str.strip, O_str.split('.'))))
                 if len(mid) > 0:
                     for catalyst_or_solvent in mid.split('.'):
                         if any(x in catalyst_or_solvent for x in {
@@ -301,23 +302,33 @@ def parse_one_reaction(one_reaction: Dict[str, str], blacklist: Set[str]):
                             'W', 'Os', 'Ir', 'Pt', 'Au', 'Hg', 'Tl',
                             'Pb', 'Bi',
                         }):
-                            catalysts.append(catalyst_or_solvent)
+                            roles_smiles[2].append(catalyst_or_solvent)
                         else:
-                            solvents.append(catalyst_or_solvent)
-                C_str, S_str = '.'.join(catalysts), '.'.join(solvents)
+                            roles_smiles[1].append(catalyst_or_solvent)
                 break
-    else:
-        R_str, C_str, S_str, O_str = '.'.join(roles_smiles[0]), '.'.join(roles_smiles[1]), '.'.join(roles_smiles[2]), '.'.join(roles_smiles[3])
     
-    R, C, S, O = map(Chem.MolFromSmiles, (R_str, C_str, S_str, O_str))
-    # num_atoms_diff = R.GetNumHeavyAtoms() - O.GetNumHeavyAtoms()
+    def clamp(l: List[str], max_n: int):
+        nl = []
+        for k, v in Counter(l).items():
+            if v > max_n:
+                v = 1
+            nl.extend([k] * v)
+        return nl
+
+    roles_smiles[0] = clamp(roles_smiles[0], max_n=6)
+    roles_smiles[1] = clamp(roles_smiles[1], max_n=6)
+    roles_smiles[2] = clamp(roles_smiles[2], max_n=6)
+    roles_smiles[3] = clamp(roles_smiles[3], max_n=6)
+    
+    R, C, S, O = map(Chem.MolFromSmiles, ('.'.join(roles_smiles[0]), '.'.join(roles_smiles[1]), '.'.join(roles_smiles[2]), '.'.join(roles_smiles[3])))
+    num_atoms_diff = R.GetNumHeavyAtoms() - O.GetNumHeavyAtoms()
     # todo dbg
-    try:
-        num_atoms_diff = R.GetNumHeavyAtoms() - O.GetNumHeavyAtoms()
-    except Exception as e:
-        print(f'[buggy] R={R_str}, C={C_str}, S={S_str}, O={O_str}')
-        print(f'[roles_smiles] {roles_smiles}')
-        raise e
+    # try:
+    #     num_atoms_diff = R.GetNumHeavyAtoms() - O.GetNumHeavyAtoms()
+    # except Exception as e:
+    #     print(f'[buggy] R={R_str}, C={C_str}, S={S_str}, O={O_str}')
+    #     print(f'[roles_smiles] {roles_smiles}')
+    #     raise e
         
     R, C, S, O = map(Chem.MolToSmiles, (R, C, S, O))
     
@@ -347,7 +358,7 @@ def main():
     random.shuffle(global_json_names)
     
     # todo dbg
-    [tensorfy_json_data(x) for x in sorted(global_json_names)]
+    # [tensorfy_json_data(x) for x in sorted(global_json_names)]
     
     world_size = cpu_count()
     with Pool(world_size) as pool:
