@@ -286,7 +286,7 @@ def parse_one_reaction(one_reaction: Dict[str, str], blacklist: Set[str]):
     if len(roles_smiles[0]) == 0 or len(roles_smiles[3]) == 0:
         for k, v in one_reaction.items():
             if v.upper() == 'REACTION_SMILES':
-                R, mid, O = one_reaction[k.replace('.type', '.value')].split('|')[0].strip().split('>')
+                R_str, mid, O_str = one_reaction[k.replace('.type', '.value')].split('|')[0].strip().split('>')
                 catalysts, solvents = [], []
                 if len(mid) > 0:
                     for catalyst_or_solvent in mid.split('.'):
@@ -299,12 +299,12 @@ def parse_one_reaction(one_reaction: Dict[str, str], blacklist: Set[str]):
                             catalysts.append(catalyst_or_solvent)
                         else:
                             solvents.append(catalyst_or_solvent)
-                C, S = '.'.join(catalysts), '.'.join(solvents)
+                C_str, S_str = '.'.join(catalysts), '.'.join(solvents)
                 break
     else:
-        R, C, S, O = '.'.join(roles_smiles[0]), '.'.join(roles_smiles[1]), '.'.join(roles_smiles[2]), '.'.join(roles_smiles[3])
+        R_str, C_str, S_str, O_str = '.'.join(roles_smiles[0]), '.'.join(roles_smiles[1]), '.'.join(roles_smiles[2]), '.'.join(roles_smiles[3])
     
-    R, C, S, O = map(Chem.MolFromSmiles, (R, C, S, O))
+    R, C, S, O = map(Chem.MolFromSmiles, (R_str, C_str, S_str, O_str))
     # num_atoms_diff = R.GetNumHeavyAtoms() - O.GetNumHeavyAtoms()
     # todo dbg
     try:
