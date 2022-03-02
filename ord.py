@@ -98,6 +98,7 @@ def tensorfy_json_data(args):
     based_on_canonicalized_reactions = isinstance(json_name, list)
     if based_on_canonicalized_reactions: # based_on_canonicalized_reactions
         reactions, uspto_root = args
+        json_name = uspto_root
         reactions: List[str]
         uspto_root: str
         torch_file = os.path.join(os.path.basename(uspto_root), 'tensor.pth')
