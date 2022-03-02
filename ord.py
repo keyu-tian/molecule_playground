@@ -94,7 +94,8 @@ def canonicalize_smiles(smiles: str):
 
 
 def tensorfy_json_data(args):
-    json_name, blacklist_name, with_set = args
+    json_name, blacklists, with_set = args
+    print(f'{time_str()} blacklists={blacklists}')
     based_on_canonicalized_reactions = isinstance(json_name, list)
     if based_on_canonicalized_reactions: # based_on_canonicalized_reactions
         reactions, uspto_root, with_set = args
@@ -106,11 +107,10 @@ def tensorfy_json_data(args):
         blacklist = set()
         
     else:
-        if blacklist_name is not None and len(blacklist_name):
-            with open(blacklist_name, 'r') as fp:
-                blacklist = set(json.load(fp))
-        else:
-            blacklist = set()
+        blacklist = set()
+        for b in blacklists:
+            with open(b, 'r') as fp:
+                blacklist |= set(json.load(fp))
         
         jsons_root = pathlib.Path(os.path.expanduser('~')) / 'datasets' / 'ord-data-json'
         torch_root = pathlib.Path(os.path.expanduser('~')) / 'datasets' / 'ord-data-torch'
@@ -393,25 +393,24 @@ def reaction_smiles_to_roles_smiles(reaction_smiles: str):
 
 def main():
     # download_and_jsonfy_data()
-    dataset, with_set, files = sys.argv[1], sys.argv[2] in {'1', 'True', 'true', 'set', 'with_set'}, sys.argv[3:]
+    dataset, with_set, files = sys.argv[1], sys.argv[2] in {'1', 'True', 'true', 'set', 'with_set'}, list(map(os.path.expanduser, sys.argv[3:]))
     assert dataset in {'ord', 'uspto-mit', 'uspto-50k'}
     prepare_uspto = 'uspto' in dataset
     
     if prepare_uspto:
-        inputs = list(map(os.path.expanduser, files))
-        print(f'[smiles files] {inputs}')
+        print(f'[uspto files] {files}')
         
-        uspto_root = os.path.dirname(inputs[0])
+        uspto_root = os.path.dirname(files[0])
         output = os.path.join(uspto_root, 'blacklist.json')
         if os.path.exists(output):
             print(f'{time_str()} output file {output} already exists, returning!')
             return
 
         reactions = []
-        for f in inputs:
+        for f in files:
             with open(f, 'r') as fin:
                 reactions.extend([l.split(' ')[0].split(',')[-1] for l in fin.read().splitlines()])
-            print(f'[after load {inputs}] len(reactions)={len(reactions)}')
+            print(f'[after load {f}] len(reactions)={len(reactions)}')
         canonicalized_reactions = []
         for r in tqdm.tqdm(reactions, desc=f'[read]', dynamic_ncols=True, mininterval=2., maxinterval=10):
             roles_smiles = reaction_smiles_to_roles_smiles(r)
@@ -425,11 +424,10 @@ def main():
         meta = tensorfy_json_data((canonicalized_reactions, uspto_root, with_set))
     
     else:
-        blacklist_name = os.path.expanduser(files[0]) if len(files) else None
         jsons_root = pathlib.Path(os.path.expanduser('~')) / 'datasets' / 'ord-data-json'
         global_json_names = os.listdir(jsons_root)
         random.shuffle(global_json_names)
-        args = [(n, blacklist_name, with_set) for n in global_json_names]
+        args = [(n, files, with_set) for n in global_json_names]
         
         world_size = cpu_count()
         with Pool(world_size) as pool:
