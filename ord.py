@@ -443,7 +443,7 @@ def main():
     
     meta = pandas.DataFrame(meta)
     meta = meta.sort_values(by=['json_name'])
-    meta.to_csv('meta-' + datetime.datetime.now().strftime('%m%d_%H-%M-%S') + '.csv')
+    meta.to_csv(f'meta-{sys.argv[1]}-{datetime.datetime.now().strftime("%m%d_%H-%M-%S")}.csv')
 
 
 if __name__ == '__main__':
