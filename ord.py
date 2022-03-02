@@ -95,7 +95,6 @@ def canonicalize_smiles(smiles: str):
 
 def tensorfy_json_data(args):
     json_name, blacklists, with_set = args
-    print(f'{time_str()} blacklists={blacklists}')
     based_on_canonicalized_reactions = isinstance(json_name, list)
     if based_on_canonicalized_reactions: # based_on_canonicalized_reactions
         reactions, uspto_root, with_set = args
@@ -107,6 +106,7 @@ def tensorfy_json_data(args):
         blacklist = set()
         
     else:
+        print(f'{time_str()} blacklists={blacklists}')
         blacklist = set()
         for b in blacklists:
             with open(b, 'r') as fp:
@@ -297,7 +297,8 @@ def reaction2graphs(bar, with_set, role_smiles_pairs, mole_offset, edge_offset, 
         react_edge_index.append(edge_index), react_edge_feat.append(edge_feat), react_atom_feat.append(atom_feat)
         
         E, V = edge_index.shape[0], atom_feat.shape[0]
-        assert V > 0
+        if V == 0:
+            print(f'[dbg] V==0, role={role}, smiles={smiles}')
         bar.set_postfix_str(f'role={idx2role[role]:9s}, E={E:3d}, V={V:3d}', refresh=False)
         edge_offset += E
         react_edge_offset.append(edge_offset)
