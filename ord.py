@@ -101,8 +101,8 @@ def tensorfy_json_data(args):
         json_name = uspto_root
         reactions: List[str]
         uspto_root: str
-        torch_file = os.path.join(os.path.basename(uspto_root), 'tensor.pth')
-        stats_file = os.path.join(os.path.basename(uspto_root), 'stats.json')
+        torch_file = os.path.join(uspto_root, 'tensor.pth')
+        stats_file = os.path.join(uspto_root, 'stats.json')
         blacklist = set()
         
     else:
@@ -396,7 +396,7 @@ def main():
     prepare_uspto = sys.argv[1] == 'uspto'
     
     if prepare_uspto:
-        inputs = sys.argv[2:]
+        inputs = list(map(os.path.expanduser, sys.argv[2:]))
         print(f'[smiles files] {inputs}')
         
         uspto_root = os.path.dirname(inputs[0])
@@ -423,8 +423,7 @@ def main():
         meta = tensorfy_json_data((canonicalized_reactions, uspto_root))
     
     else:
-        blacklist_name = sys.argv[2] if len(sys.argv) > 2 else None
-        
+        blacklist_name = os.path.expanduser(sys.argv[2]) if len(sys.argv) > 2 else None
         jsons_root = pathlib.Path(os.path.expanduser('~')) / 'datasets' / 'ord-data-json'
         global_json_names = os.listdir(jsons_root)
         random.shuffle(global_json_names)
