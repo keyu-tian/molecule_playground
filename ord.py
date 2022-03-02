@@ -396,10 +396,12 @@ def main():
     dataset, with_set, files = sys.argv[1], sys.argv[2] in {'1', 'True', 'true', 'set', 'with_set'}, list(map(os.path.expanduser, sys.argv[3:]))
     assert dataset in {'ord', 'uspto-mit', 'uspto-50k'}
     prepare_uspto = 'uspto' in dataset
+
+    print(f'[dataset  ] {dataset}')
+    print(f'[with_set ] {with_set}')
+    print(f'[files    ] {files}')
     
     if prepare_uspto:
-        print(f'[uspto files] {files}')
-        
         uspto_root = os.path.dirname(files[0])
         output = os.path.join(uspto_root, 'blacklist.json')
         if os.path.exists(output):
