@@ -298,8 +298,7 @@ def reaction2graphs(bar, with_set, role_smiles_pairs, mole_offset, edge_offset, 
         react_edge_index.append(edge_index), react_edge_feat.append(edge_feat), react_atom_feat.append(atom_feat)
         
         E, V = edge_index.shape[0], atom_feat.shape[0]
-        if V == 0:
-            print(f'[dbg] V==0, role={role}, smiles={smiles}')
+        assert V > 0
         bar.set_postfix_str(f'role={idx2role[role]:9s}, E={E:3d}, V={V:3d}', refresh=False)
         edge_offset += E
         react_edge_offset.append(edge_offset)
