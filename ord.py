@@ -94,10 +94,10 @@ def canonicalize_smiles(smiles: str):
 
 
 def tensorfy_json_data(args):
-    json_name, blacklist_name = args
+    json_name, blacklist_name, with_set = args
     based_on_canonicalized_reactions = isinstance(json_name, list)
     if based_on_canonicalized_reactions: # based_on_canonicalized_reactions
-        reactions, uspto_root = args
+        reactions, uspto_root, with_set = args
         json_name = uspto_root
         reactions: List[str]
         uspto_root: str
@@ -158,13 +158,13 @@ def tensorfy_json_data(args):
                 roles_smiles = reaction_smiles_to_roles_smiles(one_reaction)
                 R, C, S, O, canonicalized_reaction, num_atoms_diff = roles_smiles_to_reaction_smiles(roles_smiles)
                 role_smiles_pairs = role_smiles_to_role_smiles_pairs(R, C, S, O)
-                rets = reaction2graphs(bar, role_smiles_pairs, mole_offset, edge_offset, atom_offset)
+                rets = reaction2graphs(bar, with_set, role_smiles_pairs, mole_offset, edge_offset, atom_offset)
             else:
                 role_smiles_pairs, num_atoms_diff = parse_one_reaction_dict(one_reaction, blacklist)
                 if role_smiles_pairs is None:  # in blacklist
                     rets = None
                 else:
-                    rets = reaction2graphs(bar, role_smiles_pairs, mole_offset, edge_offset, atom_offset)
+                    rets = reaction2graphs(bar, with_set, role_smiles_pairs, mole_offset, edge_offset, atom_offset)
         except:
             # no need to ROLLBACK xxx_offset, all_xxx, etc. (NOT UPDATED)
             bad_reaction_idx.append(i)
@@ -280,13 +280,13 @@ def check_and_save(torch_file, json_name, bad_reaction_idx, bad_reaction_ids, bl
     torch.save(tensors, torch_file)
 
 
-def reaction2graphs(bar, role_smiles_pairs, mole_offset, edge_offset, atom_offset):
+def reaction2graphs(bar, with_set, role_smiles_pairs, mole_offset, edge_offset, atom_offset):
     react_mole_roles = []
     react_edge_index, react_edge_feat, react_atom_feat = [], [], []
     react_edge_offset, react_atom_offset = [], []
     
-    # todo 暂时set
-    role_smiles_pairs = set(role_smiles_pairs)
+    if with_set:
+        role_smiles_pairs = set(role_smiles_pairs)
     
     for role, smiles in role_smiles_pairs:
         react_mole_roles.append(role)
@@ -297,6 +297,7 @@ def reaction2graphs(bar, role_smiles_pairs, mole_offset, edge_offset, atom_offse
         react_edge_index.append(edge_index), react_edge_feat.append(edge_feat), react_atom_feat.append(atom_feat)
         
         E, V = edge_index.shape[0], atom_feat.shape[0]
+        assert V > 0
         bar.set_postfix_str(f'role={idx2role[role]:9s}, E={E:3d}, V={V:3d}', refresh=False)
         edge_offset += E
         react_edge_offset.append(edge_offset)
@@ -392,11 +393,12 @@ def reaction_smiles_to_roles_smiles(reaction_smiles: str):
 
 def main():
     # download_and_jsonfy_data()
-    assert sys.argv[1] in {'ord', 'uspto'}
-    prepare_uspto = sys.argv[1] == 'uspto'
+    dataset, with_set, files = sys.argv[1], sys.argv[2] in {'1', 'True', 'true', 'set', 'with_set'}, sys.argv[3:]
+    assert dataset in {'ord', 'uspto-mit', 'uspto-50k'}
+    prepare_uspto = 'uspto' in dataset
     
     if prepare_uspto:
-        inputs = list(map(os.path.expanduser, sys.argv[2:]))
+        inputs = list(map(os.path.expanduser, files))
         print(f'[smiles files] {inputs}')
         
         uspto_root = os.path.dirname(inputs[0])
@@ -420,17 +422,14 @@ def main():
             json.dump(canonicalized_reactions, fp, indent=2)
         print(f'{time_str()} output file saved @ {output}')
 
-        meta = tensorfy_json_data((canonicalized_reactions, uspto_root))
+        meta = tensorfy_json_data((canonicalized_reactions, uspto_root, with_set))
     
     else:
-        blacklist_name = os.path.expanduser(sys.argv[2]) if len(sys.argv) > 2 else None
+        blacklist_name = os.path.expanduser(files[0]) if len(files) else None
         jsons_root = pathlib.Path(os.path.expanduser('~')) / 'datasets' / 'ord-data-json'
         global_json_names = os.listdir(jsons_root)
         random.shuffle(global_json_names)
-        args = [(n, blacklist_name) for n in global_json_names]
-        
-        # todo dbg
-        # [tensorfy_json_data(x) for x in sorted(global_json_names)]
+        args = [(n, blacklist_name, with_set) for n in global_json_names]
         
         world_size = cpu_count()
         with Pool(world_size) as pool:
@@ -443,7 +442,7 @@ def main():
     
     meta = pandas.DataFrame(meta)
     meta = meta.sort_values(by=['json_name'])
-    meta.to_csv(f'meta-{sys.argv[1]}-{datetime.datetime.now().strftime("%m%d_%H-%M-%S")}.csv')
+    meta.to_csv(f'meta-set{int(with_set)}-{dataset}-{datetime.datetime.now().strftime("%m%d_%H-%M-%S")}.csv')
 
 
 if __name__ == '__main__':
