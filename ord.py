@@ -401,7 +401,7 @@ def main():
         uspto_root = os.path.dirname(inputs[0])
         output = os.path.join(uspto_root, 'blacklist.json')
         if os.path.exists(output):
-            print(f'output file {output} already exists, returning!')
+            print(f'{time_str()} output file {output} already exists, returning!')
             return
 
         reactions = []
@@ -417,6 +417,7 @@ def main():
         
         with open(output, 'w') as fp:
             json.dump(canonicalized_reactions, fp, indent=2)
+        print(f'{time_str()} output file saved @ {output}')
 
         meta = tensorfy_json_data((canonicalized_reactions, uspto_root))
     
