@@ -96,6 +96,7 @@ def canonicalize_smiles(smiles: str):
 def tensorfy_json_data(args):
     json_name, blacklists, with_set = args
     based_on_canonicalized_reactions = isinstance(json_name, list)
+    print(f'{time_str()} based_on_canonicalized_reactions={based_on_canonicalized_reactions}')
     if based_on_canonicalized_reactions: # based_on_canonicalized_reactions
         reactions, uspto_root, with_set = args
         json_name = uspto_root
@@ -338,13 +339,13 @@ def parse_one_reaction_dict(one_reaction: Dict[str, str], blacklist: Set[str]):
 def role_smiles_to_role_smiles_pairs(R: str, C: str, S: str, O: str):
     role_smiles_pairs: List[Tuple[int, str]] = []
     assert R and O
-    for x in R.split('.'):
+    for x in filter(len, R.split('.')):
         role_smiles_pairs.append((role2idx['REACTANT'], x))
-    for x in C.split('.'):
+    for x in filter(len, C.split('.')):
         role_smiles_pairs.append((role2idx['CATALYST'], x))
-    for x in S.split('.'):
+    for x in filter(len, S.split('.')):
         role_smiles_pairs.append((role2idx['SOLVENT'], x))
-    for x in O.split('.'):
+    for x in filter(len, O.split('.')):
         role_smiles_pairs.append((role2idx['OUTCOME'], x))
     return role_smiles_pairs
 
