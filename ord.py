@@ -337,9 +337,11 @@ def parse_one_reaction_dict(one_reaction: Dict[str, str], blacklist: Set[str]):
     
     if len(roles_smiles[0]) == 0 or len(roles_smiles[3]) == 0:
         for k, v in one_reaction.items():
-            if v.upper() == 'REACTION_SMILES':
+            if v.upper() in {'REACTION_SMILES', 'REACTION_CXSMILES'}:
                 roles_smiles = reaction_smiles_to_roles_smiles(one_reaction[k.replace('.type', '.value')].split('|')[0])
                 break
+
+    assert len(roles_smiles[0]) != 0 and len(roles_smiles[3]) != 0
 
     R, C, S, O, s, num_atoms_diff = roles_smiles_to_reaction_smiles(roles_smiles)
     if s in blacklist:
