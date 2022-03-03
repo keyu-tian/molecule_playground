@@ -6,7 +6,7 @@ import random
 import sys
 import time
 import zipfile
-from collections import Counter
+from collections import Counter, OrderedDict
 from collections import defaultdict
 from multiprocessing import Pool
 from multiprocessing import cpu_count
@@ -135,7 +135,7 @@ def tensorfy_json_data(args):
     bad_reaction_idx, bad_reaction_ids = [], []
     blk_reaction_idx, blk_reaction_ids = [], []
     reaction_ids = []
-    all_mole_roles = []
+    all_mole_roles, all_mole_counts = [], []
     all_edge_index, all_edge_feat, all_atom_feat = [], [], []
     mole_offset, all_mole_offset = 0, [0]
     edge_offset, all_edge_offset = 0, [0]
@@ -179,12 +179,13 @@ def tensorfy_json_data(args):
             reaction_ids.append(rid_as_32_ints)
             (
                 mole_offset, edge_offset, atom_offset,
-                react_mole_roles,
+                react_mole_roles, react_mole_counts,
                 react_edge_index, react_edge_feat, react_atom_feat,
                 react_edge_offset, react_atom_offset,
             ) = rets
             num_atoms_diff_stats[num_atoms_diff] += 1
             all_mole_roles.extend(react_mole_roles)
+            all_mole_counts.extend(react_mole_counts)
             all_edge_index.extend(react_edge_index), all_edge_feat.extend(react_edge_feat), all_atom_feat.extend(react_atom_feat)
             all_mole_offset.append(mole_offset)
             all_edge_offset.extend(react_edge_offset)
@@ -224,7 +225,7 @@ def tensorfy_json_data(args):
             rid_as_strs.append(rid_as_a_str)
         print(f'   ***** [{json_name}]: bad_reaction_ids={rid_as_strs}', flush=True)
     
-    check_and_save(torch_file, json_name, bad_reaction_idx, bad_reaction_ids, blk_reaction_idx, blk_reaction_ids, reaction_ids, all_mole_offset, all_mole_roles, all_edge_offset, all_edge_index, all_edge_feat, all_atom_offset, all_atom_feat)
+    check_and_save(torch_file, json_name, bad_reaction_idx, bad_reaction_ids, blk_reaction_idx, blk_reaction_ids, reaction_ids, all_mole_offset, all_mole_roles, all_mole_counts, all_edge_offset, all_edge_index, all_edge_feat, all_atom_offset, all_atom_feat)
     print(f'{time_str()} torch_file saved @ {torch_file}')
     
     # save stats
@@ -241,7 +242,7 @@ def tensorfy_json_data(args):
     return meta
 
 
-def check_and_save(torch_file, json_name, bad_reaction_idx, bad_reaction_ids, blk_reaction_idx, blk_reaction_ids, reaction_ids, all_mole_offset, all_mole_roles, all_edge_offset, all_edge_index, all_edge_feat, all_atom_offset, all_atom_feat):
+def check_and_save(torch_file, json_name, bad_reaction_idx, bad_reaction_ids, blk_reaction_idx, blk_reaction_ids, reaction_ids, all_mole_offset, all_mole_roles, all_mole_counts, all_edge_offset, all_edge_index, all_edge_feat, all_atom_offset, all_atom_feat):
     tensors = {
         'json_name': json_name,
         'bad_reaction_idx': torch.tensor(bad_reaction_idx, dtype=torch.int32),
@@ -251,6 +252,7 @@ def check_and_save(torch_file, json_name, bad_reaction_idx, bad_reaction_ids, bl
         'reaction_ids': torch.tensor(reaction_ids, dtype=torch.uint8),
         'mole_offset': torch.tensor(all_mole_offset, dtype=torch.int32),
         'mole_roles': torch.tensor(all_mole_roles, dtype=torch.int32),
+        'mole_counts': torch.tensor(all_mole_counts, dtype=torch.int32),
         'edge_offset': torch.tensor(all_edge_offset, dtype=torch.int32),
         'edge_indices': torch.cat(all_edge_index, dim=0),
         'edge_features': torch.cat(all_edge_feat, dim=0),
@@ -269,6 +271,7 @@ def check_and_save(torch_file, json_name, bad_reaction_idx, bad_reaction_ids, bl
     assert max_mid == tensors['mole_offset'][-1] + 1
     assert max_mid == tensors['edge_offset'].size(0)
     assert max_mid == tensors['mole_roles'].size(0) + 1
+    assert max_mid == tensors['mole_counts'].size(0) + 1
     
     max_aid = tensors['atom_features'].size(0)
     assert max_aid == tensors['atom_offset'][-1]
@@ -282,15 +285,24 @@ def check_and_save(torch_file, json_name, bad_reaction_idx, bad_reaction_ids, bl
 
 
 def reaction2graphs(bar, with_set, role_smiles_pairs, mole_offset, edge_offset, atom_offset):
-    react_mole_roles = []
+    react_mole_roles, react_mole_counts = [], []
     react_edge_index, react_edge_feat, react_atom_feat = [], [], []
     react_edge_offset, react_atom_offset = [], []
     
     if with_set:
-        role_smiles_pairs = set(role_smiles_pairs)
+        unique = OrderedDict()
+        for p in role_smiles_pairs:
+            if p not in unique:
+                unique[p] = 1
+            else:
+                unique[p] += 1
+        role_smiles_pairs = [(count, p) for p, count in unique.items()]
+    else:
+        role_smiles_pairs = [(1, p) for p in role_smiles_pairs]
     
-    for role, smiles in role_smiles_pairs:
+    for count, (role, smiles) in role_smiles_pairs:
         react_mole_roles.append(role)
+        react_mole_counts.append(count)
         mole_offset += 1
         
         #  (E, 2)     (E, 3)     (V, 9)
@@ -305,7 +317,7 @@ def reaction2graphs(bar, with_set, role_smiles_pairs, mole_offset, edge_offset, 
         atom_offset += V
         react_atom_offset.append(atom_offset)
     
-    return mole_offset, edge_offset, atom_offset, react_mole_roles, react_edge_index, react_edge_feat, react_atom_feat, react_edge_offset, react_atom_offset
+    return mole_offset, edge_offset, atom_offset, react_mole_roles, react_mole_counts, react_edge_index, react_edge_feat, react_atom_feat, react_edge_offset, react_atom_offset
 
 
 def parse_one_reaction_dict(one_reaction: Dict[str, str], blacklist: Set[str]):
@@ -351,7 +363,8 @@ def role_smiles_to_role_smiles_pairs(R: str, C: str, S: str, O: str):
 
 def roles_smiles_to_reaction_smiles(roles_smiles):
     R, C, S, O = map(Chem.MolFromSmiles, ('.'.join(roles_smiles[0]), '.'.join(roles_smiles[1]), '.'.join(roles_smiles[2]), '.'.join(roles_smiles[3])))
-    num_atoms_diff = R.GetNumHeavyAtoms() - O.GetNumHeavyAtoms()
+    # num_atoms_diff = R.GetNumHeavyAtoms() - O.GetNumHeavyAtoms()    # todo: 统计反应物原子数-生成物原子数
+    num_atoms_diff = len(roles_smiles[3])    # todo: 统计生成物分子数
     R, C, S, O = map(Chem.MolToSmiles, (R, C, S, O))
     s = R + '>' + '.'.join(filter(len, (C, S))) + '>' + O
     return R, C, S, O, s, num_atoms_diff
