@@ -410,7 +410,7 @@ def reaction_smiles_to_roles_smiles(reaction_smiles: str):
 def main():
     # download_and_jsonfy_data()
     dataset, with_set, files = sys.argv[1], sys.argv[2] in {'1', 'True', 'true', 'set', 'with_set'}, list(map(os.path.expanduser, sys.argv[3:]))
-    prepare_uspto = 'uspto' in dataset
+    prepare_uspto = dataset.startswith('uspto')
 
     print(f'[dataset  ] {dataset}')
     print(f'[with_set ] {with_set}')
