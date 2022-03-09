@@ -107,11 +107,11 @@ def tensorfy_json_data(args):
         blacklist = set()
         
     else:
-        print(f'{time_str()} blacklists={blacklists}')
         blacklist = set()
         for b in blacklists:
             with open(b, 'r') as fp:
                 blacklist |= set(json.load(fp))
+        print(f'{time_str()} blacklists={blacklists} ({len(blacklist)}, e.g. {sorted(list(blacklist))[0]})')
         
         jsons_root = pathlib.Path(os.path.expanduser('~')) / 'datasets' / 'ord-data-json'
         torch_root = pathlib.Path(os.path.expanduser('~')) / 'datasets' / 'ord-data-torch'
@@ -344,7 +344,7 @@ def parse_one_reaction_dict(one_reaction: Dict[str, str], blacklist: Set[str]):
     assert len(roles_smiles[0]) != 0 and len(roles_smiles[3]) != 0
 
     R, C, S, O, s, num_atoms_diff = roles_smiles_to_reaction_smiles(roles_smiles)
-    if s in blacklist:
+    if (R + '>>' + O) in blacklist:
         return None, None
     return role_smiles_to_role_smiles_pairs(R, C, S, O), num_atoms_diff
 
