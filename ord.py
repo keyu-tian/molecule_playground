@@ -344,7 +344,7 @@ def parse_one_reaction_dict(one_reaction: Dict[str, str], blacklist: Set[str]):
     assert len(roles_smiles[0]) != 0 and len(roles_smiles[3]) != 0
 
     R, C, S, O, s, num_atoms_diff = roles_smiles_to_reaction_smiles(roles_smiles)
-    if (R + '>>' + O) in blacklist:
+    if s in blacklist:
         return None, None
     return role_smiles_to_role_smiles_pairs(R, C, S, O), num_atoms_diff
 
