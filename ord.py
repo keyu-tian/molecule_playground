@@ -394,6 +394,8 @@ def roles_smiles_to_reaction_smiles(roles_smiles):
             new_O.append(o)
     if rm_duplicated_molecule:
         O = Chem.MolToSmiles(Chem.MolFromSmiles('.'.join(new_O)))   # todo: rm_duplicated_molecule
+
+    num_atoms_diff = int(O == '')   # 统计空白O的反应个数
     
     s = R + '>' + '.'.join(filter(len, (C, S))) + '>' + O
     return R, C, S, O, s, num_atoms_diff
