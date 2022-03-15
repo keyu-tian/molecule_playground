@@ -3,6 +3,7 @@ import json
 import os
 import pathlib
 import random
+import re
 import sys
 import time
 import zipfile
@@ -24,6 +25,10 @@ from rdkit import RDLogger, Chem
 RDLogger.DisableLog('rdApp.*')
 
 import smiles2graph
+
+
+atom_index_p = re.compile(':\d+\]')
+rm_duplicated_molecule = True
 
 role2idx = {
     'REACTANT': 0, 'REATANT': 0, 'REAGENT': 0,
@@ -364,10 +369,31 @@ def role_smiles_to_role_smiles_pairs(R: str, C: str, S: str, O: str):
 
 
 def roles_smiles_to_reaction_smiles(roles_smiles):
-    R, C, S, O = map(Chem.MolFromSmiles, ('.'.join(roles_smiles[0]), '.'.join(roles_smiles[1]), '.'.join(roles_smiles[2]), '.'.join(roles_smiles[3])))
-    # num_atoms_diff = R.GetNumHeavyAtoms() - O.GetNumHeavyAtoms()    # todo: 统计反应物原子数-生成物原子数
-    num_atoms_diff = len(roles_smiles[3])    # todo: 统计生成物分子数
+    
+    R, C, S, O = '.'.join(roles_smiles[0]), '.'.join(roles_smiles[1]), '.'.join(roles_smiles[2]), '.'.join(roles_smiles[3])
+    
+    if atom_index_p is not None:
+        R = atom_index_p.sub(']', R)
+        C = atom_index_p.sub(']', C)
+        S = atom_index_p.sub(']', S)
+        O = atom_index_p.sub(']', O)
+    
+    R, C, S, O = map(Chem.MolFromSmiles, (R, C, S, O))
+    # num_atoms_diff = R.GetNumHeavyAtoms() - O.GetNumHeavyAtoms()    # 统计反应物原子数-生成物原子数
+    # num_atoms_diff = len(roles_smiles[3])    # 统计生成物分子数
     R, C, S, O = map(Chem.MolToSmiles, (R, C, S, O))
+    
+    num_atoms_diff = 0    # 统计duplicated molecule数
+    Rs = set(R.split('.'))
+    new_O = []
+    for o in O.split('.'):
+        if o in Rs:
+            num_atoms_diff += 1
+        else:
+            new_O.append(o)
+    if rm_duplicated_molecule:
+        O = Chem.MolToSmiles(Chem.MolFromSmiles('.'.join(new_O)))   # todo: rm_duplicated_molecule
+    
     s = R + '>' + '.'.join(filter(len, (C, S))) + '>' + O
     return R, C, S, O, s, num_atoms_diff
 
