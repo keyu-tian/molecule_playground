@@ -347,7 +347,7 @@ def parse_one_reaction_dict(one_reaction: Dict[str, str], blacklist: Set[str]):
                 roles_smiles = reaction_smiles_to_roles_smiles(one_reaction[k.replace('.type', '.value')].split('|')[0].strip())
                 break
 
-    assert len(roles_smiles[0]) != 0 and len(roles_smiles[3]) != 0
+    assert len(roles_smiles[0]) != 0
 
     R, C, S, O, s, num_atoms_diff = roles_smiles_to_reaction_smiles(roles_smiles)
     if s in blacklist:
@@ -357,7 +357,7 @@ def parse_one_reaction_dict(one_reaction: Dict[str, str], blacklist: Set[str]):
 
 def role_smiles_to_role_smiles_pairs(R: str, C: str, S: str, O: str):
     role_smiles_pairs: List[Tuple[int, str]] = []
-    assert R and O
+    assert R
     for x in filter(len, R.split('.')):
         role_smiles_pairs.append((role2idx['REACTANT'], x))
     for x in filter(len, C.split('.')):
@@ -378,11 +378,11 @@ def roles_smiles_to_reaction_smiles(roles_smiles):
         C = atom_index_p.sub(']', C)
         S = atom_index_p.sub(']', S)
         O = atom_index_p.sub(']', O)
-    
-    R, C, S, O = map(Chem.MolFromSmiles, (R, C, S, O))
+
+    mR, mC, mS, mO = map(Chem.MolFromSmiles, (R, C, S, O))
     # num_atoms_diff = R.GetNumHeavyAtoms() - O.GetNumHeavyAtoms()    # 统计反应物原子数-生成物原子数
     # num_atoms_diff = len(roles_smiles[3])    # 统计生成物分子数
-    R, C, S, O = map(Chem.MolToSmiles, (R, C, S, O))
+    R, C, S, O = map(Chem.MolToSmiles, (mR, mC, mS, mO))
     
     num_atoms_diff = 0    # 统计duplicated molecule数
     Rs = set(R.split('.'))
