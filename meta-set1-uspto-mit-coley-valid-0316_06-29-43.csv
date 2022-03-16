@@ -1,0 +1,2 @@
+,json_name,#R,#R_blk,#M_per_R,#E_per_R,#A_per_R,cost,#bad_reac,buggy
+0,/home/keyu/datasets/uspto_mit_sep_with_set/valid,30000,0,5.54,128.38,63.33,104.35,0,False
