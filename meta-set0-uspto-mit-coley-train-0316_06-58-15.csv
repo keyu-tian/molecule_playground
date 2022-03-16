@@ -1,0 +1,2 @@
+,json_name,#R,#R_blk,#M_per_R,#E_per_R,#A_per_R,cost,#bad_reac,buggy
+0,/home/keyu/datasets/uspto_mit_sep_wo_set/train,409035,0,5.78,129.76,64.17,1463.95,0,False
