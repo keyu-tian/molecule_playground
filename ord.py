@@ -96,7 +96,7 @@ def download_and_jsonfy_data():
 
 
 def canonicalize_smiles(smiles: str):
-    return Chem.MolToSmiles(Chem.MolFromSmiles(smiles)) if len(smiles) else ''
+    return Chem.CanonSmiles(smiles) if len(smiles) else ''
 
 
 def tensorfy_json_data(args):
@@ -347,7 +347,7 @@ def parse_one_reaction_dict(one_reaction: Dict[str, str], blacklist: Set[str]):
                 roles_smiles = reaction_smiles_to_roles_smiles(one_reaction[k.replace('.type', '.value')].split('|')[0].strip())
                 break
 
-    assert len(roles_smiles[0]) != 0
+    assert len(roles_smiles[0]) != 0 and len(roles_smiles[3] != 0)
 
     R, C, S, O, s, num_atoms_diff = roles_smiles_to_reaction_smiles(roles_smiles)
     if s in blacklist:
@@ -442,7 +442,7 @@ def main():
     prepare_uspto = dataset.startswith('uspto')
 
     if os.path.isdir(files[0]):
-        files = glob.glob(os.path.join(files[0], '*.txt'))
+        files = glob.glob(os.path.join(files[0], '*.txt')) + glob.glob(os.path.join(files[0], '*.csv'))
 
     print(f'[dataset  ] {dataset}')
     print(f'[with_set ] {with_set}')
