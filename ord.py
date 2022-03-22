@@ -117,8 +117,8 @@ def tensorfy_json_data(args):
         for b in blacklists:
             with open(b, 'r') as fp:
                 blacklist |= set(json.load(fp))
-        eg = f', e.g. {sorted(list(blacklist))[0]})' if len(blacklists) else ''
-        print(f'{time_str()} blacklists={blacklists} ({len(blacklist)}{eg}')
+        eg = f', e.g. {sorted(list(blacklist))[0]}' if len(blacklists) else ''
+        print(f'{time_str()} blacklists={blacklists} ({len(blacklist)}{eg})')
         
         jsons_root = pathlib.Path(os.path.expanduser('~')) / 'datasets' / 'ord-data-json'
         torch_root = pathlib.Path(os.path.expanduser('~')) / 'datasets' / 'ord-data-torch'
