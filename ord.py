@@ -357,7 +357,7 @@ def parse_one_reaction_dict(one_reaction: Dict[str, str], blacklist: Set[str]):
 
 def role_smiles_to_role_smiles_pairs(R: str, C: str, S: str, O: str):
     role_smiles_pairs: List[Tuple[int, str]] = []
-    assert R
+    assert R and O
     for x in filter(len, R.split('.')):
         role_smiles_pairs.append((role2idx['REACTANT'], x))
     for x in filter(len, C.split('.')):
