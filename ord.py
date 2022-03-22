@@ -347,7 +347,7 @@ def parse_one_reaction_dict(one_reaction: Dict[str, str], blacklist: Set[str]):
                 roles_smiles = reaction_smiles_to_roles_smiles(one_reaction[k.replace('.type', '.value')].split('|')[0].strip())
                 break
 
-    assert len(roles_smiles[0]) != 0 and len(roles_smiles[3] != 0)
+    assert len(roles_smiles[0]) != 0 and len(roles_smiles[3]) != 0
 
     R, C, S, O, s, num_atoms_diff = roles_smiles_to_reaction_smiles(roles_smiles)
     if s in blacklist:
@@ -373,16 +373,20 @@ def roles_smiles_to_reaction_smiles(roles_smiles):
     
     R, C, S, O = '.'.join(roles_smiles[0]), '.'.join(roles_smiles[1]), '.'.join(roles_smiles[2]), '.'.join(roles_smiles[3])
     
-    if atom_index_p is not None:
-        R = atom_index_p.sub(']', R)
-        C = atom_index_p.sub(']', C)
-        S = atom_index_p.sub(']', S)
-        O = atom_index_p.sub(']', O)
+    # if atom_index_p is not None:
+    #     R = atom_index_p.sub(']', R)
+    #     C = atom_index_p.sub(']', C)
+    #     S = atom_index_p.sub(']', S)
+    #     O = atom_index_p.sub(']', O)
 
     mR, mC, mS, mO = map(Chem.MolFromSmiles, (R, C, S, O))
+    for mo in (mR, mC, mS, mO):
+        for a in mo.GetAtoms():
+            a.SetAtomMapNum(0)
+    
     # num_atoms_diff = R.GetNumHeavyAtoms() - O.GetNumHeavyAtoms()    # 统计反应物原子数-生成物原子数
     # num_atoms_diff = len(roles_smiles[3])    # 统计生成物分子数
-    R, C, S, O = map(Chem.MolToSmiles, (mR, mC, mS, mO))
+    R, C, S, O = map(Chem.CanonSmiles, map(Chem.MolToSmiles, (mR, mC, mS, mO)))
     
     num_atoms_diff = 0    # 统计duplicated molecule数
     Rs = set(R.split('.'))
@@ -393,7 +397,7 @@ def roles_smiles_to_reaction_smiles(roles_smiles):
         else:
             new_O.append(o)
     if rm_duplicated_molecule:
-        O = Chem.MolToSmiles(Chem.MolFromSmiles('.'.join(new_O)))   # todo: rm_duplicated_molecule
+        O = Chem.CanonSmiles('.'.join(new_O))   # todo: rm_duplicated_molecule
 
     num_atoms_diff = len(new_O) == 0   # 统计空白O的反应个数
     
@@ -403,6 +407,16 @@ def roles_smiles_to_reaction_smiles(roles_smiles):
 
 def reaction_smiles_to_roles_smiles(reaction_smiles: str):
     roles_smiles = {v: [] for v in role2idx.values()}
+    #
+    # rxn = Chem.rdChemReactions.ReactionFromSmarts(reaction_smiles)
+    # rxn.ClearComputedProps()
+    # mols = []
+    # for mol in rxn.GetProducts():
+    #     for atom in mol.GetAtoms():
+    #         atom.SetAtomMapNum(0)
+    #     mols.append(mol)
+    # smi = '.'.join(Chem.MolToSmiles(mol) for mol in mols)
+    # smi = Chem.CanonSmiles(smi)
     
     R_str, mid, O_str = reaction_smiles.strip().split('>')
     roles_smiles[0] = list(filter(len, map(str.strip, R_str.split('.'))))
@@ -477,6 +491,9 @@ def main():
         global_json_names = os.listdir(jsons_root)
         random.shuffle(global_json_names)
         args = [(n, files, with_set) for n in global_json_names]
+        
+        # todo: dbg
+        metas = [tensorfy_json_data(a) for a in args]
         
         world_size = cpu_count()
         with Pool(world_size) as pool:
