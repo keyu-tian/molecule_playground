@@ -493,7 +493,7 @@ def main():
         args = [(n, files, with_set) for n in global_json_names]
         
         # todo: dbg
-        metas = [tensorfy_json_data(a) for a in args]
+        # metas = [tensorfy_json_data(a) for a in args]
         
         world_size = cpu_count()
         with Pool(world_size) as pool:
