@@ -32,8 +32,8 @@ atom_index_p = re.compile(':\d+\]')
 rm_duplicated_molecule = True
 
 role2idx = {
-    'REACTANT': 0, 'REATANT': 0, 'REAGENT': 0,
-    'SOLVENT': 1,
+    'REACTANT': 0, 'REATANT': 0,
+    'REAGENT': 1, 'SOLVENT': 1,
     'CATALYST': 2, 'INTERNAL_STANDARD': 2,
     'OUTCOME': 3, 'PRODUCT': 3,
 }
