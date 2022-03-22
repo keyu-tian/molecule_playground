@@ -455,7 +455,7 @@ def main():
     dataset, with_set, files = sys.argv[1], sys.argv[2] in {'1', 'True', 'true', 'set', 'with_set'}, list(map(os.path.expanduser, sys.argv[3:]))
     prepare_uspto = dataset.startswith('uspto')
 
-    if os.path.isdir(files[0]):
+    if len(files) and os.path.isdir(files[0]):
         files = glob.glob(os.path.join(files[0], '*.txt')) + glob.glob(os.path.join(files[0], '*.csv'))
 
     print(f'[dataset  ] {dataset}')
