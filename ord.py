@@ -402,7 +402,7 @@ def roles_smiles_to_reaction_smiles(roles_smiles):
 
     num_atoms_diff = len(new_O) == 0   # 统计空白O的反应个数
     
-    s = R + '>' + '.'.join(filter(len, (C, S))) + '>' + O
+    s = R + '>>' + O    # todo: temp 仅仅用于检查ord里面有没有50k和ecreact
     return R, C, S, O, s, num_atoms_diff
 
 
