@@ -164,7 +164,7 @@ def tensorfy_json_data(args):
         try:
             if based_on_canonicalized_reactions:
                 roles_smiles = reaction_smiles_to_roles_smiles(one_reaction)
-                R, C, S, O, canonicalized_reaction, num_atoms_diff = roles_smiles_to_reaction_smiles(roles_smiles)
+                R, C, S, O, _, num_atoms_diff = roles_smiles_to_reaction_smiles(roles_smiles)
                 role_smiles_pairs = role_smiles_to_role_smiles_pairs(R, C, S, O)
                 rets = reaction2graphs(bar, with_set, role_smiles_pairs, mole_offset, edge_offset, atom_offset)
             else:
