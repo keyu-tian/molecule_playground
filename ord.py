@@ -409,7 +409,7 @@ def roles_smiles_to_reaction_smiles(roles_smiles):
 def reaction_smiles_to_roles_smiles(reaction_smiles: str):
     roles_smiles = {v: [] for v in role2idx.values()}
     #
-    # rxn = Chem.rdChemReactions.ReactionFromSmarts(reaction_smiles)
+    # rxn = rdChemReactions.ReactionFromSmarts(reaction_smiles)
     # rxn.ClearComputedProps()
     # mols = []
     # for mol in rxn.GetProducts():
