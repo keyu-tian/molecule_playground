@@ -1,0 +1,2 @@
+,json_name,#R,#R_blk,#M_per_R,#E_per_R,#A_per_R,cost,#bad_reac,buggy
+0,/home/keyu/datasets/ecreact_wo_set_amap/valid,2829,0,3.19,243.32,120.71,20.81,0,False
